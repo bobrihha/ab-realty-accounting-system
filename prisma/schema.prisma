@@ -1,0 +1,195 @@
+// Система управленческого и финансового учета для агентства недвижимости
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Сотрудники компании
+model Employee {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  phone         String
+  role          Role     // AGENT, ROP, ACCOUNTANT, OWNER
+  status        Status   @default(ACTIVE) // ACTIVE, INACTIVE
+  department    String?
+  hireDate      DateTime
+  terminationDate DateTime?
+  passwordHash  String?
+  baseRateAgent Float?   // Ставка агента в %
+  baseRateROP   Float?   // Ставка РОПа в %
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  managerId     String?
+
+  // Связи
+  dealsAsAgent  Deal[]   @relation("AgentDeals")
+  dealsAsROP    Deal[]   @relation("ROPDeals")
+  commissionRates CommissionRate[]
+  manager       Employee? @relation("EmployeeManager", fields: [managerId], references: [id])
+  subordinates  Employee[] @relation("EmployeeManager")
+
+  @@map("employees")
+}
+
+// История изменения ставок комиссий
+model CommissionRate {
+  id            String   @id @default(cuid())
+  employeeId    String
+  rate          Float    // Ставка в %
+  type          RateType // AGENT, ROP
+  effectiveDate DateTime
+  createdAt     DateTime @default(now())
+
+  // Связи
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("commission_rates")
+}
+
+// Сделки
+model Deal {
+  id              String       @id @default(cuid())
+  client          String
+  object          String
+  price           Float
+  commission      Float        // Комиссия агентства
+  agentId         String
+  ropId           String?
+  status          DealStatus   @default(DEPOSIT)
+  depositDate     DateTime
+  dealDate        DateTime?
+  plannedCloseDate DateTime?
+  contractType    ContractType @default(EXCLUSIVE)
+  legalServices   Boolean      @default(false)
+  notes           String?
+  taxRate         Float        @default(6) // Ставка налога в %
+  externalExpenses Float       @default(0) // Внешние расходы
+  ropCommission   Float?       // Комиссия РОПа (рассчитывается)
+  agentCommission Float?       // Комиссия агента (рассчитывается)
+  netProfit       Float?       // Чистая прибыль (рассчитывается)
+  ropRateApplied  Float?
+  agentRateApplied Float?
+  commissionsManual Boolean    @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Связи
+  agent           Employee @relation("AgentDeals", fields: [agentId], references: [id])
+  rop             Employee? @relation("ROPDeals", fields: [ropId], references: [id])
+
+  @@map("deals")
+}
+
+// Финансовые операции
+model CashFlow {
+  id          String       @id @default(cuid())
+  type        CashFlowType // INCOME, EXPENSE
+  amount      Float
+  category    String
+  plannedDate DateTime
+  actualDate  DateTime?
+  description String?
+  accountId   String
+  createdAt   DateTime     @default(now())
+
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("cash_flow")
+}
+
+// Счета и кошельки
+model Account {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  balance   Float       @default(0)
+  type      AccountType // BANK, CASH, DIGITAL
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  cashFlows CashFlow[]
+
+  @@map("accounts")
+}
+
+// Прогноз кассовых разрывов
+model CashFlowForecast {
+  month            String     @id
+  openingBalance   Float
+  expectedIncome   Float
+  plannedExpenses  Float
+  closingBalance   Float
+  status           ForecastStatus
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@map("cash_flow_forecasts")
+}
+
+// Расходы по категориям
+model Expense {
+  id          String   @id @default(cuid())
+  category    String
+  amount      Float
+  date        DateTime
+  description String?
+  month       String   // Для группировки по месяцам
+  createdAt   DateTime @default(now())
+
+  @@map("expenses")
+}
+
+// Enum'ы
+enum Role {
+  AGENT
+  ROP
+  ACCOUNTANT
+  OWNER
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+enum DealStatus {
+  DEPOSIT
+  REGISTRATION
+  WAITING_INVOICE
+  WAITING_PAYMENT
+  CLOSED
+  CANCELLED
+}
+
+enum ContractType {
+  EXCLUSIVE
+  SELECTION
+  DEVELOPER
+}
+
+enum RateType {
+  AGENT
+  ROP
+}
+
+enum CashFlowType {
+  INCOME
+  EXPENSE
+}
+
+enum AccountType {
+  BANK
+  CASH
+  DIGITAL
+}
+
+enum ForecastStatus {
+  POSITIVE
+  WARNING
+  CRITICAL
+}

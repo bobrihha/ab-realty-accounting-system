@@ -1,0 +1,253 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
+import { DealsRegistry } from '@/components/deals/deals-registry'
+import { FinancePNL } from '@/components/finance/finance-pnl'
+import { Treasury } from '@/components/treasury/treasury'
+import { Team } from '@/components/team/team'
+import { Compensation } from '@/components/compensation/compensation'
+import { signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
+import { Badge } from '@/components/ui/badge'
+import { DollarSign, FileText, TrendingUp, TrendingDown } from 'lucide-react'
+
+interface KPICard {
+  title: string
+  value: string
+  change?: number
+  icon: React.ReactNode
+  description: string
+  color: string
+}
+
+export default function Dashboard() {
+  const [kpiData, setKpiData] = useState<KPICard[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const { data: session } = useSession()
+  const { status } = useSession()
+  const router = useRouter()
+  const role = ((session as any)?.role as string | undefined) ?? 'AGENT'
+  const accountName = session?.user?.name ?? session?.user?.email ?? 'Пользователь'
+
+  const roleLabel = (r: string) => {
+    switch (r) {
+      case 'OWNER':
+        return 'Владелец'
+      case 'ACCOUNTANT':
+        return 'Бухгалтер'
+      case 'ROP':
+        return 'РОП'
+      case 'AGENT':
+      default:
+        return 'Агент'
+    }
+  }
+
+  useEffect(() => {
+    const loadData = async () => {
+      setError(null)
+      const res = await fetch('/api/dashboard', { cache: 'no-store' })
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.replace('/auth/signin')
+          return
+        }
+        throw new Error('Не удалось загрузить дашборд')
+      }
+      const data = await res.json().catch(() => {
+        throw new Error('Некорректный ответ сервера')
+      })
+
+      const fmt = (n: number) =>
+        new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(n)
+
+      const kpis: KPICard[] = [
+        {
+          title: 'Ожидаю итого',
+          value: fmt(data.kpis.expectedTotal ?? 0),
+          icon: <DollarSign className="h-6 w-6" />,
+          description: 'Общая сумма в работе',
+          color: 'text-blue-600'
+        },
+        {
+          title: 'В задатках',
+          value: fmt(data.kpis.deposits ?? 0),
+          icon: <FileText className="h-6 w-6" />,
+          description: 'Прогноз поступлений',
+          color: 'text-orange-600'
+        },
+        {
+          title: 'На оплате',
+          value: fmt(data.kpis.onPayment ?? 0),
+          icon: <TrendingUp className="h-6 w-6" />,
+          description: 'Дебиторская задолженность',
+          color: 'text-green-600'
+        },
+        {
+          title: 'Чистая прибыль мес.',
+          value: fmt(data.kpis.netProfitMonth ?? 0),
+          icon: <TrendingDown className="h-6 w-6" />,
+          description: 'За текущий месяц',
+          color: 'text-purple-600'
+        }
+      ]
+
+      setKpiData(kpis)
+      setLoading(false)
+    }
+
+    if (status === 'unauthenticated') {
+      router.replace('/auth/signin')
+      return
+    }
+    if (status !== 'authenticated') return
+
+    loadData().catch((e: unknown) => {
+      setError(e instanceof Error ? e.message : 'Ошибка')
+      setLoading(false)
+    })
+  }, [router, status])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Загрузка данных...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <Card className="w-full max-w-lg">
+          <CardHeader>
+            <CardTitle>Ошибка</CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-2">
+            <Button onClick={() => location.reload()}>Обновить</Button>
+            <Button variant="outline" onClick={() => signOut({ callbackUrl: '/auth/signin' })}>
+              Выйти
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Система учета Агенства недвижимости АБ Риэлт Групп</h1>
+              <p className="text-sm text-gray-500">Управленческий и финансовый учет</p>
+            </div>
+            <div className="flex items-center space-x-4">
+              <div className="hidden sm:flex flex-col items-end leading-tight">
+                <div className="text-sm font-medium text-gray-900 max-w-[260px] truncate">{accountName}</div>
+                <Badge variant="secondary">{roleLabel(role)}</Badge>
+              </div>
+              <Button variant="outline" onClick={() => signOut({ callbackUrl: '/auth/signin' })}>
+                Выйти
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {kpiData.map((kpi, index) => (
+            <Card key={index} className="hover:shadow-lg transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">
+                  {kpi.title}
+                </CardTitle>
+                <div className={kpi.color}>
+                  {kpi.icon}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{kpi.value}</div>
+                <div className="flex items-center space-x-2 text-xs text-gray-500 mt-1">
+                  {kpi.change && (
+                    <>
+                      <span className={kpi.change > 0 ? 'text-green-600' : 'text-red-600'}>
+                        {kpi.change > 0 ? '↑' : '↓'} {Math.abs(kpi.change)}%
+                      </span>
+                      <span>к прошлому месяцу</span>
+                    </>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">{kpi.description}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Main Content */}
+        <Tabs defaultValue="deals" className="space-y-6">
+          <TabsList className="flex w-full flex-wrap">
+            <TabsTrigger value="deals">Сделки</TabsTrigger>
+            {(role === 'AGENT' || role === 'ROP') && (
+              <TabsTrigger value="comp">{role === 'AGENT' ? 'Моя ЗП' : 'Комиссии'}</TabsTrigger>
+            )}
+            {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+              <TabsTrigger value="finance">Финансы / P&L</TabsTrigger>
+            )}
+            {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+              <TabsTrigger value="treasury">Казначейство</TabsTrigger>
+            )}
+            {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
+              <TabsTrigger value="team">Команда</TabsTrigger>
+            )}
+          </TabsList>
+
+          {/* Deals Tab */}
+          <TabsContent value="deals" className="space-y-6">
+            <DealsRegistry />
+          </TabsContent>
+
+          {(role === 'AGENT' || role === 'ROP') && (
+            <TabsContent value="comp">
+              <Compensation />
+            </TabsContent>
+          )}
+
+          {/* Finance Tab */}
+          {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+            <TabsContent value="finance">
+              <FinancePNL />
+            </TabsContent>
+          )}
+
+          {/* Treasury Tab */}
+          {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+            <TabsContent value="treasury">
+              <Treasury />
+            </TabsContent>
+          )}
+
+          {/* Team Tab */}
+          {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
+            <TabsContent value="team">
+              <Team />
+            </TabsContent>
+          )}
+        </Tabs>
+      </main>
+    </div>
+  )
+}
