@@ -15,17 +15,20 @@ export async function GET() {
 
     const totals = await db.deal.aggregate({
       where: dealsWhere,
-      _sum: { commission: true }
+      _sum: { commission: true },
+      _count: { _all: true }
     })
 
     const deposits = await db.deal.aggregate({
       where: { ...dealsWhere, status: 'DEPOSIT' },
-      _sum: { commission: true }
+      _sum: { commission: true },
+      _count: { _all: true }
     })
 
     const onPayment = await db.deal.aggregate({
       where: { ...dealsWhere, status: { in: ['REGISTRATION', 'WAITING_INVOICE', 'WAITING_PAYMENT'] } },
-      _sum: { commission: true }
+      _sum: { commission: true },
+      _count: { _all: true }
     })
 
     const now = new Date()
@@ -33,7 +36,8 @@ export async function GET() {
     const to = endOfMonth(now)
     const netProfitMonth = await db.deal.aggregate({
       where: { ...dealsWhere, status: 'CLOSED', dealDate: { gte: from, lte: to } },
-      _sum: { netProfit: true }
+      _sum: { netProfit: true },
+      _count: { _all: true }
     })
 
     const recentDeals = await db.deal.findMany({
@@ -48,7 +52,13 @@ export async function GET() {
         expectedTotal: totals._sum.commission ?? 0,
         deposits: deposits._sum.commission ?? 0,
         onPayment: onPayment._sum.commission ?? 0,
-        netProfitMonth: netProfitMonth._sum.netProfit ?? 0
+        netProfitMonth: netProfitMonth._sum.netProfit ?? 0,
+        counts: {
+          expectedTotal: totals._count._all ?? 0,
+          deposits: deposits._count._all ?? 0,
+          onPayment: onPayment._count._all ?? 0,
+          netProfitMonth: netProfitMonth._count._all ?? 0
+        }
       },
       recentDeals
     })
@@ -60,4 +70,3 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch dashboard' }, { status: 500 })
   }
 }
-

@@ -70,21 +70,40 @@ export async function POST(request: NextRequest) {
         )
 
       case 'cashflow':
-        return NextResponse.json(
-          await db.cashFlow.create({
+        if (!data.accountId) {
+          return NextResponse.json({ error: 'accountId is required' }, { status: 400 })
+        }
+
+        const typeUpper = String(data.type ?? 'EXPENSE').toUpperCase() as 'INCOME' | 'EXPENSE'
+        const amount = Number(data.amount ?? 0)
+        const actualDate = data.actualDate ? new Date(data.actualDate) : null
+        const delta = actualDate ? (typeUpper === 'INCOME' ? 1 : -1) * amount : 0
+
+        const created = await db.$transaction(async tx => {
+          const cashFlow = await tx.cashFlow.create({
             data: {
-              type: String(data.type ?? 'EXPENSE').toUpperCase(),
-              amount: Number(data.amount ?? 0),
+              type: typeUpper,
+              amount,
               category: String(data.category ?? ''),
               plannedDate: data.plannedDate ? new Date(data.plannedDate) : new Date(),
-              actualDate: data.actualDate ? new Date(data.actualDate) : null,
+              actualDate,
               description: data.description ? String(data.description) : null,
-              accountId: String(data.accountId ?? '')
-            },
-            include: { account: true }
-          }),
-          { status: 201 }
-        )
+              accountId: String(data.accountId)
+            }
+          })
+
+          if (delta !== 0) {
+            await tx.account.update({
+              where: { id: String(data.accountId) },
+              data: { balance: { increment: delta } }
+            })
+          }
+
+          return cashFlow
+        })
+
+        const withAccount = await db.cashFlow.findUnique({ where: { id: created.id }, include: { account: true } })
+        return NextResponse.json(withAccount, { status: 201 })
 
       default:
         return NextResponse.json(
@@ -125,7 +144,9 @@ async function computeForecast(months: number) {
     })
 
     const plannedExpenses = await db.cashFlow.aggregate({
-      where: { type: 'EXPENSE', plannedDate: { gte: from, lte: to } },
+      // Opening balance is taken from current account balances (includes already paid operations),
+      // so for forecast we subtract only expenses that are not marked as paid yet.
+      where: { type: 'EXPENSE', plannedDate: { gte: from, lte: to }, actualDate: null },
       _sum: { amount: true }
     })
 

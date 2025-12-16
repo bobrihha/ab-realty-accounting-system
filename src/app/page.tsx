@@ -10,6 +10,7 @@ import { FinancePNL } from '@/components/finance/finance-pnl'
 import { Treasury } from '@/components/treasury/treasury'
 import { Team } from '@/components/team/team'
 import { Compensation } from '@/components/compensation/compensation'
+import { Payroll } from '@/components/payroll/payroll'
 import { signOut } from 'next-auth/react'
 import { useSession } from 'next-auth/react'
 import { Badge } from '@/components/ui/badge'
@@ -71,28 +72,28 @@ export default function Dashboard() {
           title: 'Ожидаю итого',
           value: fmt(data.kpis.expectedTotal ?? 0),
           icon: <DollarSign className="h-6 w-6" />,
-          description: 'Общая сумма в работе',
+          description: `Общая сумма в работе · ${data?.kpis?.counts?.expectedTotal ?? 0} сделок`,
           color: 'text-blue-600'
         },
         {
           title: 'В задатках',
           value: fmt(data.kpis.deposits ?? 0),
           icon: <FileText className="h-6 w-6" />,
-          description: 'Прогноз поступлений',
+          description: `Прогноз поступлений · ${data?.kpis?.counts?.deposits ?? 0} сделок`,
           color: 'text-orange-600'
         },
         {
           title: 'На оплате',
           value: fmt(data.kpis.onPayment ?? 0),
           icon: <TrendingUp className="h-6 w-6" />,
-          description: 'Дебиторская задолженность',
+          description: `Дебиторская задолженность · ${data?.kpis?.counts?.onPayment ?? 0} сделок`,
           color: 'text-green-600'
         },
         {
           title: 'Чистая прибыль мес.',
           value: fmt(data.kpis.netProfitMonth ?? 0),
           icon: <TrendingDown className="h-6 w-6" />,
-          description: 'За текущий месяц',
+          description: `За текущий месяц · ${data?.kpis?.counts?.netProfitMonth ?? 0} сделок`,
           color: 'text-purple-600'
         }
       ]
@@ -210,6 +211,9 @@ export default function Dashboard() {
             {(role === 'OWNER' || role === 'ACCOUNTANT') && (
               <TabsTrigger value="treasury">Казначейство</TabsTrigger>
             )}
+            {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+              <TabsTrigger value="payroll">Выплаты</TabsTrigger>
+            )}
             {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
               <TabsTrigger value="team">Команда</TabsTrigger>
             )}
@@ -237,6 +241,12 @@ export default function Dashboard() {
           {(role === 'OWNER' || role === 'ACCOUNTANT') && (
             <TabsContent value="treasury">
               <Treasury />
+            </TabsContent>
+          )}
+
+          {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+            <TabsContent value="payroll">
+              <Payroll />
             </TabsContent>
           )}
 

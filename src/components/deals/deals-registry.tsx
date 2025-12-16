@@ -15,7 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Search, Plus, Edit, Trash2, Eye, RefreshCw, DollarSign } from 'lucide-react'
 
 type DealStatus = 'DEPOSIT' | 'REGISTRATION' | 'WAITING_INVOICE' | 'WAITING_PAYMENT' | 'CLOSED' | 'CANCELLED'
-type ContractType = 'EXCLUSIVE' | 'SELECTION' | 'DEVELOPER'
+type ContractType = 'EXCLUSIVE' | 'SELECTION' | 'DEVELOPER' | 'SELLER'
 type Employee = { id: string; name: string }
 
 type Deal = {
@@ -32,6 +32,10 @@ type Deal = {
   legalServices: boolean
   notes: string | null
   taxRate: number
+  brokerExpense: number
+  lawyerExpense: number
+  referralExpense: number
+  otherExpense: number
   externalExpenses: number
   ropCommission: number | null
   agentCommission: number | null
@@ -53,7 +57,8 @@ const statusConfig: Record<DealStatus, { label: string; color: string }> = {
 const contractTypeLabels: Record<ContractType, string> = {
   EXCLUSIVE: 'Эксклюзив',
   SELECTION: 'Подбор',
-  DEVELOPER: 'Застройщик'
+  DEVELOPER: 'Застройщик',
+  SELLER: 'Договор продавца'
 }
 
 export function DealsRegistry() {
@@ -87,7 +92,10 @@ export function DealsRegistry() {
     legalServices: false,
     notes: '',
     taxRate: '6',
-    externalExpenses: '0',
+    brokerExpense: '0',
+    lawyerExpense: '0',
+    referralExpense: '0',
+    otherExpense: '0',
     commissionsManual: false
   })
 
@@ -141,7 +149,10 @@ export function DealsRegistry() {
       legalServices: false,
       notes: '',
       taxRate: '6',
-      externalExpenses: '0',
+      brokerExpense: '0',
+      lawyerExpense: '0',
+      referralExpense: '0',
+      otherExpense: '0',
       commissionsManual: false
     })
   }
@@ -166,7 +177,10 @@ export function DealsRegistry() {
       legalServices: formData.legalServices,
       notes: formData.notes || undefined,
       taxRate: parseFloat(formData.taxRate) || 6,
-      externalExpenses: parseFloat(formData.externalExpenses) || 0,
+      brokerExpense: parseFloat(formData.brokerExpense) || 0,
+      lawyerExpense: parseFloat(formData.lawyerExpense) || 0,
+      referralExpense: parseFloat(formData.referralExpense) || 0,
+      otherExpense: parseFloat(formData.otherExpense) || 0,
       commissionsManual: formData.commissionsManual
     }
 
@@ -199,7 +213,10 @@ export function DealsRegistry() {
         legalServices: editingDeal.legalServices,
         notes: editingDeal.notes,
         taxRate: editingDeal.taxRate,
-        externalExpenses: editingDeal.externalExpenses,
+        brokerExpense: editingDeal.brokerExpense,
+        lawyerExpense: editingDeal.lawyerExpense,
+        referralExpense: editingDeal.referralExpense,
+        otherExpense: editingDeal.otherExpense,
         commissionsManual: editingDeal.commissionsManual,
         ropCommission: editingDeal.ropCommission,
         agentCommission: editingDeal.agentCommission,
@@ -365,14 +382,54 @@ export function DealsRegistry() {
                       onChange={e => setFormData(p => ({ ...p, taxRate: e.target.value }))}
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="externalExpenses">Внешние расходы</Label>
-                    <Input
-                      id="externalExpenses"
-                      type="number"
-                      value={formData.externalExpenses}
-                      onChange={e => setFormData(p => ({ ...p, externalExpenses: e.target.value }))}
-                    />
+                  <div className="col-span-2">
+                    <Label>Расходы по сделке</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="brokerExpense" className="text-xs text-gray-500">
+                          Брокер / ипотека
+                        </Label>
+                        <Input
+                          id="brokerExpense"
+                          type="number"
+                          value={formData.brokerExpense}
+                          onChange={e => setFormData(p => ({ ...p, brokerExpense: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="lawyerExpense" className="text-xs text-gray-500">
+                          Юрист
+                        </Label>
+                        <Input
+                          id="lawyerExpense"
+                          type="number"
+                          value={formData.lawyerExpense}
+                          onChange={e => setFormData(p => ({ ...p, lawyerExpense: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="referralExpense" className="text-xs text-gray-500">
+                          Рекомендация
+                        </Label>
+                        <Input
+                          id="referralExpense"
+                          type="number"
+                          value={formData.referralExpense}
+                          onChange={e => setFormData(p => ({ ...p, referralExpense: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="otherExpense" className="text-xs text-gray-500">
+                          Прочее
+                        </Label>
+                        <Input
+                          id="otherExpense"
+                          type="number"
+                          value={formData.otherExpense}
+                          onChange={e => setFormData(p => ({ ...p, otherExpense: e.target.value }))}
+                        />
+                      </div>
+                    </div>
                   </div>
                   <div className="col-span-2">
                     <Label htmlFor="notes">Примечания</Label>
@@ -559,8 +616,15 @@ export function DealsRegistry() {
                       <p className="font-medium">{selectedDeal.taxRate}%</p>
                     </div>
                     <div>
-                      <Label className="text-sm font-medium text-gray-500">Внешние расходы</Label>
+                      <Label className="text-sm font-medium text-gray-500">Расходы (итого)</Label>
                       <p className="font-medium">{formatCurrency(selectedDeal.externalExpenses)}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-sm font-medium text-gray-500">Расходы (детализация)</Label>
+                      <p className="font-medium">
+                        Брокер/ипотека: {formatCurrency(selectedDeal.brokerExpense)} · Юрист: {formatCurrency(selectedDeal.lawyerExpense)} ·
+                        Рекомендация: {formatCurrency(selectedDeal.referralExpense)} · Прочее: {formatCurrency(selectedDeal.otherExpense)}
+                      </p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-gray-500">Чистая прибыль</Label>
@@ -694,13 +758,42 @@ export function DealsRegistry() {
                   onChange={e => setEditingDeal(d => (d ? { ...d, taxRate: parseFloat(e.target.value) || 0 } : d))}
                 />
               </div>
-              <div>
-                <Label>Внешние расходы</Label>
-                <Input
-                  type="number"
-                  value={editingDeal.externalExpenses}
-                  onChange={e => setEditingDeal(d => (d ? { ...d, externalExpenses: parseFloat(e.target.value) || 0 } : d))}
-                />
+              <div className="col-span-2">
+                <Label>Расходы по сделке</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-gray-500">Брокер / ипотека</Label>
+                    <Input
+                      type="number"
+                      value={editingDeal.brokerExpense}
+                      onChange={e => setEditingDeal(d => (d ? { ...d, brokerExpense: parseFloat(e.target.value) || 0 } : d))}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Юрист</Label>
+                    <Input
+                      type="number"
+                      value={editingDeal.lawyerExpense}
+                      onChange={e => setEditingDeal(d => (d ? { ...d, lawyerExpense: parseFloat(e.target.value) || 0 } : d))}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Рекомендация</Label>
+                    <Input
+                      type="number"
+                      value={editingDeal.referralExpense}
+                      onChange={e => setEditingDeal(d => (d ? { ...d, referralExpense: parseFloat(e.target.value) || 0 } : d))}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Прочее</Label>
+                    <Input
+                      type="number"
+                      value={editingDeal.otherExpense}
+                      onChange={e => setEditingDeal(d => (d ? { ...d, otherExpense: parseFloat(e.target.value) || 0 } : d))}
+                    />
+                  </div>
+                </div>
               </div>
               <div className="col-span-2 flex items-center space-x-2">
                 <Checkbox

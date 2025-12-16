@@ -2,6 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireSession, canViewAllDeals } from '@/lib/guards'
 import { computeWaterfall, getRateForEmployeeAtDate } from '@/lib/commissions'
+import { ensureDealPayrollAccruals } from '@/lib/payroll'
+
+function normalizeDealExpenses<T extends { brokerExpense?: number; lawyerExpense?: number; referralExpense?: number; otherExpense?: number; externalExpenses?: number }>(
+  deal: T
+) {
+  const brokerExpense = Number(deal.brokerExpense ?? 0)
+  const lawyerExpense = Number(deal.lawyerExpense ?? 0)
+  const referralExpense = Number(deal.referralExpense ?? 0)
+  let otherExpense = Number(deal.otherExpense ?? 0)
+  const externalExpenses = Number(deal.externalExpenses ?? 0)
+
+  const breakdownSum = brokerExpense + lawyerExpense + referralExpense + otherExpense
+  if (breakdownSum === 0 && externalExpenses !== 0) {
+    otherExpense = externalExpenses
+  }
+
+  const normalizedExternal = brokerExpense + lawyerExpense + referralExpense + otherExpense
+  return { brokerExpense, lawyerExpense, referralExpense, otherExpense, externalExpenses: normalizedExternal }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,7 +56,12 @@ export async function GET(request: NextRequest) {
       include: { agent: true, rop: true }
     })
 
-    return NextResponse.json(deals)
+    return NextResponse.json(
+      deals.map(d => ({
+        ...d,
+        ...normalizeDealExpenses(d as any)
+      }))
+    )
   } catch (error) {
     if ((error as Error).message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -85,7 +109,15 @@ export async function POST(request: NextRequest) {
 
     const grossCommission = Number(data.commission ?? 0)
     const taxRate = Number(data.taxRate ?? 6)
-    const externalExpenses = Number(data.externalExpenses ?? 0)
+
+    const expenses = normalizeDealExpenses({
+      brokerExpense: data.brokerExpense,
+      lawyerExpense: data.lawyerExpense,
+      referralExpense: data.referralExpense,
+      otherExpense: data.otherExpense,
+      externalExpenses: data.externalExpenses
+    })
+    const externalExpenses = expenses.externalExpenses
     const commissionsManual = Boolean(data.commissionsManual)
 
     const waterfall = computeWaterfall({
@@ -112,6 +144,10 @@ export async function POST(request: NextRequest) {
         legalServices: Boolean(data.legalServices),
         notes: data.notes ? String(data.notes) : null,
         taxRate,
+        brokerExpense: expenses.brokerExpense,
+        lawyerExpense: expenses.lawyerExpense,
+        referralExpense: expenses.referralExpense,
+        otherExpense: expenses.otherExpense,
         externalExpenses,
         ropRateApplied: ropRate,
         agentRateApplied: agentRate,
@@ -123,7 +159,8 @@ export async function POST(request: NextRequest) {
       include: { agent: true, rop: true }
     })
 
-    return NextResponse.json(deal, { status: 201 })
+    await ensureDealPayrollAccruals(deal.id)
+    return NextResponse.json({ ...deal, ...normalizeDealExpenses(deal as any) }, { status: 201 })
   } catch (error) {
     if ((error as Error).message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

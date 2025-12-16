@@ -1,17 +1,27 @@
 import type { NextConfig } from "next";
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
-const nextConfig: NextConfig = {
-  output: "standalone",
-  /* config options here */
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  // 禁用 Next.js 热重载，由 nodemon 处理重编译
-  reactStrictMode: false,
-  eslint: {
-    // 构建时忽略ESLint错误
-    ignoreDuringBuilds: true,
-  },
-};
+export default function nextConfig(phase: string): NextConfig {
+  const isDev = phase === PHASE_DEVELOPMENT_SERVER;
 
-export default nextConfig;
+  return {
+    output: "standalone",
+    // Разделяем артефакты dev и build, чтобы они не конфликтовали и не ломали чанки.
+    distDir: isDev ? ".next-dev" : ".next",
+    typescript: {
+      ignoreBuildErrors: true,
+    },
+    reactStrictMode: false,
+    eslint: {
+      ignoreDuringBuilds: true,
+    },
+    webpack: (config, { dev }) => {
+      // На некоторых окружениях (например, Node 24+) webpack persistent cache в dev может ломаться
+      // и приводить к ошибкам вида "Cannot find module './NNN.js'". Отключаем cache в dev.
+      if (dev) {
+        config.cache = false;
+      }
+      return config;
+    },
+  };
+}

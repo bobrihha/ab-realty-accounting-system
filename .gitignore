@@ -15,6 +15,7 @@ node_modules
 
 # next.js
 /.next/
+/.next-dev/
 /out/
 
 # production
@@ -46,6 +47,11 @@ next-env.d.ts
 local-*
 .claude
 dev.log
+import_data/*.csv
+import_data/*.tsv
+
+# docs / local notes
+ТЗ для фин модели.*
 test
 prompt
 

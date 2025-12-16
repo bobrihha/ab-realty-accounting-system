@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subMonths, subWeeks, subYears } from 'date-fns'
+import { ru } from 'date-fns/locale'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Plus, RefreshCw, Edit } from 'lucide-react'
+import { Plus, RefreshCw, Edit, Trash2 } from 'lucide-react'
 
 type Role = 'AGENT' | 'ROP' | 'ACCOUNTANT' | 'OWNER'
 type Status = 'ACTIVE' | 'INACTIVE'
@@ -46,6 +48,8 @@ const roleLabels: Record<Role, string> = {
   ACCOUNTANT: 'Бухгалтер',
   OWNER: 'Владелец'
 }
+
+type StatsPeriod = 'week' | 'month' | 'year'
 
 export function Team() {
   const NONE = '__none__'
@@ -120,8 +124,96 @@ export function Team() {
   }, [])
 
   const rops = useMemo(() => employees.filter(e => e.role === 'ROP'), [employees])
+  const agents = useMemo(() => employees.filter(e => e.role === 'AGENT'), [employees])
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString('ru-RU')
+
+  const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('month')
+
+  const agentStats = useMemo(() => {
+    const now = new Date()
+    const monthFrom = startOfMonth(now)
+    const monthTo = endOfMonth(now)
+
+    const active = agents.filter(a => a.status === 'ACTIVE').length
+    const inactive = agents.filter(a => a.status === 'INACTIVE').length
+
+    const joinedThisMonth = agents.filter(a => {
+      const d = a.hireDate ? new Date(a.hireDate) : null
+      return d ? d >= monthFrom && d <= monthTo : false
+    }).length
+
+    const leftThisMonth = agents.filter(a => {
+      if (!a.terminationDate) return false
+      const d = new Date(a.terminationDate)
+      return d >= monthFrom && d <= monthTo
+    }).length
+
+    const mk = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+
+    const series =
+      statsPeriod === 'month'
+        ? Array.from({ length: 12 }, (_, i) => {
+            const date = subMonths(new Date(now.getFullYear(), now.getMonth(), 1), i)
+            const from = startOfMonth(date)
+            const to = endOfMonth(date)
+            const label = format(date, 'LLLL yyyy', { locale: ru })
+            const hires = agents.filter(a => {
+              const d = a.hireDate ? new Date(a.hireDate) : null
+              return d ? d >= from && d <= to : false
+            }).length
+            const fires = agents.filter(a => {
+              if (!a.terminationDate) return false
+              const d = new Date(a.terminationDate)
+              return d >= from && d <= to
+            }).length
+            return { key: mk(date), label, hires, fires }
+          }).reverse()
+        : statsPeriod === 'week'
+          ? Array.from({ length: 12 }, (_, i) => {
+              const date = subWeeks(now, i)
+              const from = startOfWeek(date, { weekStartsOn: 1 })
+              const to = endOfWeek(date, { weekStartsOn: 1 })
+              const label = `${format(from, 'dd.MM', { locale: ru })}–${format(to, 'dd.MM', { locale: ru })}`
+              const key = `${format(from, 'yyyy-LL-dd')}`
+              const hires = agents.filter(a => {
+                const d = a.hireDate ? new Date(a.hireDate) : null
+                return d ? d >= from && d <= to : false
+              }).length
+              const fires = agents.filter(a => {
+                if (!a.terminationDate) return false
+                const d = new Date(a.terminationDate)
+                return d >= from && d <= to
+              }).length
+              return { key, label, hires, fires }
+            }).reverse()
+          : Array.from({ length: 5 }, (_, i) => {
+              const date = subYears(new Date(now.getFullYear(), 0, 1), i)
+              const year = date.getFullYear()
+              const from = new Date(year, 0, 1)
+              const to = new Date(year, 11, 31, 23, 59, 59, 999)
+              const label = String(year)
+              const hires = agents.filter(a => {
+                const d = a.hireDate ? new Date(a.hireDate) : null
+                return d ? d >= from && d <= to : false
+              }).length
+              const fires = agents.filter(a => {
+                if (!a.terminationDate) return false
+                const d = new Date(a.terminationDate)
+                return d >= from && d <= to
+              }).length
+              return { key: label, label, hires, fires }
+            }).reverse()
+
+    return {
+      total: agents.length,
+      active,
+      inactive,
+      joinedThisMonth,
+      leftThisMonth,
+      series
+    }
+  }, [agents, statsPeriod])
 
   const handleAddEmployee = async () => {
     const res = await fetch('/api/employees', {
@@ -454,99 +546,99 @@ export function Team() {
             </DialogHeader>
             {editingEmployee && (
               <div className="grid grid-cols-2 gap-4 py-4">
-              <div className="col-span-2">
-                <Label>ФИО</Label>
-                <Input value={editEmployee.name} onChange={e => setEditEmployee(p => ({ ...p, name: e.target.value }))} />
-              </div>
-              <div>
-                <Label>Email (логин)</Label>
-                <Input value={editEmployee.email} onChange={e => setEditEmployee(p => ({ ...p, email: e.target.value }))} />
-              </div>
-              <div>
-                <Label>Телефон</Label>
-                <Input value={editEmployee.phone} onChange={e => setEditEmployee(p => ({ ...p, phone: e.target.value }))} />
-              </div>
-              <div>
-                <Label>Роль</Label>
-                <Select value={editEmployee.role} onValueChange={v => setEditEmployee(p => ({ ...p, role: v as Role }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(roleLabels).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>
-                        {v}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Статус</Label>
-                <Select value={editEmployee.status} onValueChange={v => setEditEmployee(p => ({ ...p, status: v as Status }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ACTIVE">Активен</SelectItem>
-                    <SelectItem value="INACTIVE">Уволен</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Отдел</Label>
-                <Input value={editEmployee.department} onChange={e => setEditEmployee(p => ({ ...p, department: e.target.value }))} />
-              </div>
-              <div>
-                <Label>РОП (руководитель)</Label>
-                <Select value={editEmployee.managerId} onValueChange={v => setEditEmployee(p => ({ ...p, managerId: v }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Не указан" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Не указан</SelectItem>
-                    {rops.map(r => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Дата найма</Label>
-                <Input value={editEmployee.hireDate} type="date" onChange={e => setEditEmployee(p => ({ ...p, hireDate: e.target.value }))} />
-              </div>
-              <div>
-                <Label>Дата увольнения</Label>
-                <Input
-                  value={editEmployee.terminationDate}
-                  type="date"
-                  onChange={e => setEditEmployee(p => ({ ...p, terminationDate: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label>Базовая ставка агента (%)</Label>
-                <Input
-                  value={editEmployee.baseRateAgent}
-                  type="number"
-                  onChange={e => setEditEmployee(p => ({ ...p, baseRateAgent: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label>Базовая ставка РОПа (%)</Label>
-                <Input value={editEmployee.baseRateROP} type="number" onChange={e => setEditEmployee(p => ({ ...p, baseRateROP: e.target.value }))} />
-              </div>
-              <div className="col-span-2">
-                <Label>Новый пароль (необязательно)</Label>
-                <Input value={editEmployee.password} type="password" onChange={e => setEditEmployee(p => ({ ...p, password: e.target.value }))} />
-              </div>
-              <div className="col-span-2 flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-                  Отмена
-                </Button>
-                <Button onClick={() => handleUpdateEmployee().catch(err => alert(err.message))}>Сохранить</Button>
-              </div>
+                <div className="col-span-2">
+                  <Label>ФИО</Label>
+                  <Input value={editEmployee.name} onChange={e => setEditEmployee(p => ({ ...p, name: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Email (логин)</Label>
+                  <Input value={editEmployee.email} onChange={e => setEditEmployee(p => ({ ...p, email: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Телефон</Label>
+                  <Input value={editEmployee.phone} onChange={e => setEditEmployee(p => ({ ...p, phone: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Роль</Label>
+                  <Select value={editEmployee.role} onValueChange={v => setEditEmployee(p => ({ ...p, role: v as Role }))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(roleLabels).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>
+                          {v}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Статус</Label>
+                  <Select value={editEmployee.status} onValueChange={v => setEditEmployee(p => ({ ...p, status: v as Status }))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ACTIVE">Активен</SelectItem>
+                      <SelectItem value="INACTIVE">Уволен</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Отдел</Label>
+                  <Input value={editEmployee.department} onChange={e => setEditEmployee(p => ({ ...p, department: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>РОП (руководитель)</Label>
+                  <Select value={editEmployee.managerId} onValueChange={v => setEditEmployee(p => ({ ...p, managerId: v }))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Не указан" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>Не указан</SelectItem>
+                      {rops.map(r => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Дата найма</Label>
+                  <Input value={editEmployee.hireDate} type="date" onChange={e => setEditEmployee(p => ({ ...p, hireDate: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Дата увольнения</Label>
+                  <Input
+                    value={editEmployee.terminationDate}
+                    type="date"
+                    onChange={e => setEditEmployee(p => ({ ...p, terminationDate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Базовая ставка агента (%)</Label>
+                  <Input
+                    value={editEmployee.baseRateAgent}
+                    type="number"
+                    onChange={e => setEditEmployee(p => ({ ...p, baseRateAgent: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Базовая ставка РОПа (%)</Label>
+                  <Input value={editEmployee.baseRateROP} type="number" onChange={e => setEditEmployee(p => ({ ...p, baseRateROP: e.target.value }))} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Новый пароль (необязательно)</Label>
+                  <Input value={editEmployee.password} type="password" onChange={e => setEditEmployee(p => ({ ...p, password: e.target.value }))} />
+                </div>
+                <div className="col-span-2 flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                    Отмена
+                  </Button>
+                  <Button onClick={() => handleUpdateEmployee().catch(err => alert(err.message))}>Сохранить</Button>
+                </div>
               </div>
             )}
           </DialogContent>
@@ -554,9 +646,10 @@ export function Team() {
       )}
 
       <Tabs defaultValue="employees" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="flex w-full flex-wrap">
           <TabsTrigger value="employees">Сотрудники</TabsTrigger>
           <TabsTrigger value="rates">История ставок</TabsTrigger>
+          <TabsTrigger value="stats">Статистика</TabsTrigger>
         </TabsList>
 
         <TabsContent value="employees">
@@ -599,9 +692,29 @@ export function Team() {
                       <TableCell className="text-right">{e.baseRateROP != null ? `${e.baseRateROP}%` : '-'}</TableCell>
                       {isOwner && (
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" onClick={() => openEdit(e)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                          <div className="flex justify-end space-x-2">
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(e)}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (!confirm('Вы уверены, что хотите удалить этого сотрудника?')) return
+                                fetch(`/api/employees/${e.id}`, { method: 'DELETE' })
+                                  .then(async res => {
+                                    if (!res.ok) {
+                                      const data = await res.json().catch(() => null)
+                                      throw new Error(data?.error || 'Не удалось удалить сотрудника')
+                                    }
+                                    await load()
+                                  })
+                                  .catch(err => alert(err.message))
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       )}
                     </TableRow>
@@ -641,6 +754,87 @@ export function Team() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="stats">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-gray-600">Агентов всего</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{agentStats.total}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-gray-600">Активные</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{agentStats.active}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-gray-600">Принято в этом месяце</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{agentStats.joinedThisMonth}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-gray-600">Уволено в этом месяце</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{agentStats.leftThisMonth}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Динамика штата агентов</CardTitle>
+                  <CardDescription>Принято/уволено по периодам (по данным даты входа/выхода)</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant={statsPeriod === 'week' ? 'default' : 'outline'} onClick={() => setStatsPeriod('week')}>
+                    Неделя
+                  </Button>
+                  <Button variant={statsPeriod === 'month' ? 'default' : 'outline'} onClick={() => setStatsPeriod('month')}>
+                    Месяц
+                  </Button>
+                  <Button variant={statsPeriod === 'year' ? 'default' : 'outline'} onClick={() => setStatsPeriod('year')}>
+                    Год
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Период</TableHead>
+                      <TableHead className="text-right">Принято</TableHead>
+                      <TableHead className="text-right">Уволено</TableHead>
+                      <TableHead className="text-right">Сальдо</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agentStats.series.map(r => (
+                      <TableRow key={r.key}>
+                        <TableCell className="font-medium capitalize">{r.label}</TableCell>
+                        <TableCell className="text-right text-green-700">{r.hires}</TableCell>
+                        <TableCell className="text-right text-red-700">{r.fires}</TableCell>
+                        <TableCell className="text-right font-medium">{r.hires - r.fires}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

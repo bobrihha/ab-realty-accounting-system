@@ -56,6 +56,12 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.sub = (user as any).id
         ;(token as any).role = (user as any).role
+      } else {
+        // Backward/edge-case compatibility: if role is missing in an existing token, hydrate it from DB.
+        if (token.sub && !(token as any).role) {
+          const employee = await db.employee.findUnique({ where: { id: token.sub } })
+          ;(token as any).role = normalizeRole(employee?.role)
+        }
       }
       return token
     },

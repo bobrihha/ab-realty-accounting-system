@@ -2,6 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireSession, canViewAllDeals } from '@/lib/guards'
 import { computeWaterfall, getRateForEmployeeAtDate } from '@/lib/commissions'
+import { ensureDealPayrollAccruals } from '@/lib/payroll'
+
+function normalizeDealExpenses<T extends { brokerExpense?: number; lawyerExpense?: number; referralExpense?: number; otherExpense?: number; externalExpenses?: number }>(
+  deal: T
+) {
+  const brokerExpense = Number(deal.brokerExpense ?? 0)
+  const lawyerExpense = Number(deal.lawyerExpense ?? 0)
+  const referralExpense = Number(deal.referralExpense ?? 0)
+  let otherExpense = Number(deal.otherExpense ?? 0)
+  const externalExpenses = Number(deal.externalExpenses ?? 0)
+
+  const breakdownSum = brokerExpense + lawyerExpense + referralExpense + otherExpense
+  if (breakdownSum === 0 && externalExpenses !== 0) {
+    otherExpense = externalExpenses
+  }
+
+  const normalizedExternal = brokerExpense + lawyerExpense + referralExpense + otherExpense
+  return { brokerExpense, lawyerExpense, referralExpense, otherExpense, externalExpenses: normalizedExternal }
+}
 
 export async function GET(
   request: NextRequest,
@@ -24,7 +43,7 @@ export async function GET(
       }
     }
 
-    return NextResponse.json(deal)
+    return NextResponse.json({ ...deal, ...normalizeDealExpenses(deal as any) })
   } catch (error) {
     if ((error as Error).message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -53,6 +72,14 @@ export async function PUT(
     const commissionsManual =
       typeof data.commissionsManual === 'boolean' ? data.commissionsManual : existing.commissionsManual
 
+    const expenses = normalizeDealExpenses({
+      brokerExpense: data.brokerExpense ?? existing.brokerExpense,
+      lawyerExpense: data.lawyerExpense ?? existing.lawyerExpense,
+      referralExpense: data.referralExpense ?? existing.referralExpense,
+      otherExpense: data.otherExpense ?? existing.otherExpense,
+      externalExpenses: data.externalExpenses ?? existing.externalExpenses
+    })
+
     let update: any = {
       client: data.client ?? undefined,
       object: data.object ?? undefined,
@@ -70,7 +97,11 @@ export async function PUT(
       legalServices: typeof data.legalServices === 'boolean' ? data.legalServices : undefined,
       notes: data.notes === null ? null : data.notes ?? undefined,
       taxRate: data.taxRate ?? undefined,
-      externalExpenses: data.externalExpenses ?? undefined,
+      brokerExpense: data.brokerExpense ?? undefined,
+      lawyerExpense: data.lawyerExpense ?? undefined,
+      referralExpense: data.referralExpense ?? undefined,
+      otherExpense: data.otherExpense ?? undefined,
+      externalExpenses: expenses.externalExpenses,
       commissionsManual
     }
 
@@ -83,6 +114,10 @@ export async function PUT(
       (data.commission !== undefined ||
         data.taxRate !== undefined ||
         data.externalExpenses !== undefined ||
+        data.brokerExpense !== undefined ||
+        data.lawyerExpense !== undefined ||
+        data.referralExpense !== undefined ||
+        data.otherExpense !== undefined ||
         data.agentId !== undefined ||
         data.ropId !== undefined ||
         data.depositDate !== undefined)
@@ -112,7 +147,7 @@ export async function PUT(
 
         const grossCommission = Number(data.commission ?? existing.commission)
         const taxRate = Number(data.taxRate ?? existing.taxRate)
-        const externalExpenses = Number(data.externalExpenses ?? existing.externalExpenses)
+        const externalExpenses = expenses.externalExpenses
 
         const waterfall = computeWaterfall({
           grossCommission,
@@ -143,7 +178,8 @@ export async function PUT(
       include: { agent: true, rop: true }
     })
 
-    return NextResponse.json(deal)
+    await ensureDealPayrollAccruals(deal.id)
+    return NextResponse.json({ ...deal, ...normalizeDealExpenses(deal as any) })
   } catch (error) {
     if ((error as Error).message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

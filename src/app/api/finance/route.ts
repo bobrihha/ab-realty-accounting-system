@@ -25,6 +25,14 @@ export async function GET(request: NextRequest) {
       select: { date: true, category: true, amount: true }
     })
 
+    const payrollAccrualClient = (db as any).payrollAccrual
+    const payrollAccruals: { accruedAt: Date; type: 'AGENT' | 'ROP'; amount: number }[] = payrollAccrualClient?.findMany
+      ? await payrollAccrualClient.findMany({
+          where: { accruedAt: { gte: from, lte: to } },
+          select: { accruedAt: true, type: true, amount: true }
+        })
+      : []
+
     const byMonth: Record<
       string,
       {
@@ -57,6 +65,12 @@ export async function GET(request: NextRequest) {
     for (const e of expenses) {
       const mk = monthKey(e.date)
       byMonth[mk].expensesByCategory[e.category] = (byMonth[mk].expensesByCategory[e.category] ?? 0) + e.amount
+    }
+
+    for (const a of payrollAccruals) {
+      const mk = monthKey(a.accruedAt)
+      const cat = a.type === 'AGENT' ? 'ЗП агентам (начислено)' : 'ЗП РОП (начислено)'
+      byMonth[mk].expensesByCategory[cat] = (byMonth[mk].expensesByCategory[cat] ?? 0) + a.amount
     }
 
     const result = Object.values(byMonth)

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Wallet, AlertTriangle, TrendingUp, Plus } from 'lucide-react'
+import { AlertTriangle, Edit, Plus, RefreshCw, Trash2, TrendingUp, Wallet } from 'lucide-react'
 
 type AccountType = 'BANK' | 'CASH' | 'DIGITAL'
 type CashFlowType = 'INCOME' | 'EXPENSE'
@@ -47,29 +47,36 @@ export function Treasury() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [cashFlow, setCashFlow] = useState<CashFlowItem[]>([])
   const [forecast, setForecast] = useState<MonthlyForecast[]>([])
-  const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false)
-  const [isCashFlowDialogOpen, setIsCashFlowDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false)
+  const [isCashFlowDialogOpen, setIsCashFlowDialogOpen] = useState(false)
+  const [isEditAccountDialogOpen, setIsEditAccountDialogOpen] = useState(false)
+
+  const [editingCashFlow, setEditingCashFlow] = useState<CashFlowItem | null>(null)
+  const [isEditCashFlowDialogOpen, setIsEditCashFlowDialogOpen] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+
   const [newAccount, setNewAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
+  const [editAccount, setEditAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
   const [newCashFlow, setNewCashFlow] = useState({
     type: 'INCOME' as CashFlowType,
     amount: '',
     category: '',
-    date: '',
+    plannedDate: '',
     description: '',
     accountId: '',
-    planned: false
+    plannedOnly: false
   })
 
   const load = async () => {
     setLoading(true)
     const res = await fetch('/api/treasury?months=12', { cache: 'no-store' })
-    if (!res.ok) throw new Error('Failed to load treasury')
+    if (!res.ok) throw new Error('Не удалось загрузить казначейство')
     const data = await res.json()
-    setAccounts(data.accounts)
-    setCashFlow(data.cashFlow)
-    setForecast(data.forecast)
+    setAccounts(data.accounts ?? [])
+    setCashFlow(data.cashFlow ?? [])
+    setForecast(data.forecast ?? [])
     setLoading(false)
   }
 
@@ -80,13 +87,13 @@ export function Treasury() {
     })
   }, [])
 
+  const totalBalance = useMemo(() => accounts.reduce((sum, a) => sum + (a.balance || 0), 0), [accounts])
+  const hasCashGap = useMemo(() => forecast.some(f => f.status === 'critical'), [forecast])
+
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 }).format(amount)
 
-  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('ru-RU')
-
-  const totalBalance = useMemo(() => accounts.reduce((sum, a) => sum + a.balance, 0), [accounts])
-  const hasCashGap = useMemo(() => forecast.some(f => f.status === 'critical'), [forecast])
+  const formatDate = (dateString: string | null) => (dateString ? new Date(dateString).toLocaleDateString('ru-RU') : '-')
 
   const accountTypeLabel: Record<AccountType, string> = {
     BANK: 'Банк',
@@ -99,6 +106,26 @@ export function Treasury() {
     return { label: 'ОК', cls: 'bg-green-100 text-green-800' }
   }
 
+  const openEditCashFlow = (item: CashFlowItem) => {
+    setEditingCashFlow(item)
+    setNewCashFlow({
+      type: item.type,
+      amount: String(item.amount),
+      category: item.category,
+      plannedDate: item.plannedDate.slice(0, 10),
+      description: item.description ?? '',
+      accountId: item.accountId,
+      plannedOnly: item.actualDate === null
+    })
+    setIsEditCashFlowDialogOpen(true)
+  }
+
+  const openEditAccount = (account: Account) => {
+    setEditingAccount(account)
+    setEditAccount({ name: account.name, balance: String(account.balance), type: account.type })
+    setIsEditAccountDialogOpen(true)
+  }
+
   const handleAddAccount = async () => {
     const res = await fetch('/api/treasury?type=account', {
       method: 'POST',
@@ -109,14 +136,41 @@ export function Treasury() {
         type: newAccount.type
       })
     })
-    if (!res.ok) throw new Error('Failed to create account')
+    if (!res.ok) throw new Error('Не удалось создать счет')
     setIsAccountDialogOpen(false)
     setNewAccount({ name: '', balance: '', type: 'BANK' })
     await load()
   }
 
+  const handleUpdateAccount = async () => {
+    if (!editingAccount) return
+    const res = await fetch(`/api/accounts/${editingAccount.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: editAccount.name,
+        balance: parseFloat(editAccount.balance) || 0,
+        type: editAccount.type
+      })
+    })
+    if (!res.ok) throw new Error('Не удалось обновить счет')
+    setIsEditAccountDialogOpen(false)
+    setEditingAccount(null)
+    setEditAccount({ name: '', balance: '', type: 'BANK' })
+    await load()
+  }
+
+  const handleDeleteAccount = async (accountId: string) => {
+    if (!confirm('Удалить счет? Операции по нему также будут удалены.')) return
+    const res = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error('Не удалось удалить счет')
+    await load()
+  }
+
   const handleAddCashFlow = async () => {
-    const date = newCashFlow.date ? newCashFlow.date : new Date().toISOString().slice(0, 10)
+    if (!newCashFlow.accountId) throw new Error('Выберите счет')
+    const plannedDate = newCashFlow.plannedDate ? newCashFlow.plannedDate : new Date().toISOString().slice(0, 10)
+
     const res = await fetch('/api/treasury?type=cashflow', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -124,15 +178,48 @@ export function Treasury() {
         type: newCashFlow.type,
         amount: parseFloat(newCashFlow.amount) || 0,
         category: newCashFlow.category,
-        plannedDate: date,
-        actualDate: newCashFlow.planned ? null : date,
+        plannedDate,
+        actualDate: newCashFlow.plannedOnly ? null : plannedDate,
         description: newCashFlow.description || null,
         accountId: newCashFlow.accountId
       })
     })
-    if (!res.ok) throw new Error('Failed to create cashflow')
+    if (!res.ok) throw new Error('Не удалось добавить операцию')
     setIsCashFlowDialogOpen(false)
-    setNewCashFlow({ type: 'INCOME', amount: '', category: '', date: '', description: '', accountId: '', planned: false })
+    setNewCashFlow({ type: 'INCOME', amount: '', category: '', plannedDate: '', description: '', accountId: '', plannedOnly: false })
+    await load()
+  }
+
+  const handleUpdateCashFlow = async () => {
+    if (!editingCashFlow) return
+    if (!newCashFlow.accountId) throw new Error('Выберите счет')
+    const plannedDate = newCashFlow.plannedDate ? newCashFlow.plannedDate : new Date().toISOString().slice(0, 10)
+
+    const res = await fetch(`/api/cash-flow/${editingCashFlow.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: newCashFlow.type,
+        amount: parseFloat(newCashFlow.amount) || 0,
+        category: newCashFlow.category,
+        plannedDate,
+        actualDate: newCashFlow.plannedOnly ? null : plannedDate,
+        description: newCashFlow.description || null,
+        accountId: newCashFlow.accountId
+      })
+    })
+
+    if (!res.ok) throw new Error('Не удалось обновить операцию')
+    setIsEditCashFlowDialogOpen(false)
+    setEditingCashFlow(null)
+    setNewCashFlow({ type: 'INCOME', amount: '', category: '', plannedDate: '', description: '', accountId: '', plannedOnly: false })
+    await load()
+  }
+
+  const handleDeleteCashFlow = async (id: string) => {
+    if (!confirm('Удалить операцию? Баланс счета будет скорректирован.')) return
+    const res = await fetch(`/api/cash-flow/${id}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error('Не удалось удалить операцию')
     await load()
   }
 
@@ -155,6 +242,11 @@ export function Treasury() {
           <p className="text-gray-500">Счета, операции и прогноз кассовых разрывов</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => load().catch(err => alert(err.message))}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Обновить
+          </Button>
+
           <Dialog open={isAccountDialogOpen} onOpenChange={setIsAccountDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
@@ -174,11 +266,7 @@ export function Treasury() {
                 </div>
                 <div>
                   <Label>Остаток</Label>
-                  <Input
-                    type="number"
-                    value={newAccount.balance}
-                    onChange={e => setNewAccount(p => ({ ...p, balance: e.target.value }))}
-                  />
+                  <Input value={newAccount.balance} type="number" onChange={e => setNewAccount(p => ({ ...p, balance: e.target.value }))} />
                 </div>
                 <div>
                   <Label>Тип</Label>
@@ -228,7 +316,11 @@ export function Treasury() {
                 </div>
                 <div>
                   <Label>Сумма</Label>
-                  <Input value={newCashFlow.amount} type="number" onChange={e => setNewCashFlow(p => ({ ...p, amount: e.target.value }))} />
+                  <Input
+                    value={newCashFlow.amount}
+                    type="number"
+                    onChange={e => setNewCashFlow(p => ({ ...p, amount: e.target.value }))}
+                  />
                 </div>
                 <div className="col-span-2">
                   <Label>Категория</Label>
@@ -236,17 +328,21 @@ export function Treasury() {
                 </div>
                 <div>
                   <Label>Дата (план)</Label>
-                  <Input value={newCashFlow.date} type="date" onChange={e => setNewCashFlow(p => ({ ...p, date: e.target.value }))} />
+                  <Input
+                    value={newCashFlow.plannedDate}
+                    type="date"
+                    onChange={e => setNewCashFlow(p => ({ ...p, plannedDate: e.target.value }))}
+                  />
                 </div>
                 <div className="flex items-center space-x-2 pt-6">
                   <input
                     type="checkbox"
-                    checked={newCashFlow.planned}
-                    onChange={e => setNewCashFlow(p => ({ ...p, planned: e.target.checked }))}
+                    checked={newCashFlow.plannedOnly}
+                    onChange={e => setNewCashFlow(p => ({ ...p, plannedOnly: e.target.checked }))}
                     className="rounded"
-                    id="planned"
+                    id="plannedOnly"
                   />
-                  <Label htmlFor="planned">Только план (без факта)</Label>
+                  <Label htmlFor="plannedOnly">Только план (без факта)</Label>
                 </div>
                 <div className="col-span-2">
                   <Label>Счет</Label>
@@ -286,6 +382,120 @@ export function Treasury() {
         </Alert>
       )}
 
+      <Dialog open={isEditCashFlowDialogOpen} onOpenChange={setIsEditCashFlowDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Редактировать операцию</DialogTitle>
+            <DialogDescription>При изменении факта баланс счета будет скорректирован</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Тип</Label>
+              <select
+                className="w-full border rounded-md p-2"
+                value={newCashFlow.type}
+                onChange={e => setNewCashFlow(p => ({ ...p, type: e.target.value as CashFlowType }))}
+              >
+                <option value="INCOME">Приход</option>
+                <option value="EXPENSE">Расход</option>
+              </select>
+            </div>
+            <div>
+              <Label>Сумма</Label>
+              <Input value={newCashFlow.amount} type="number" onChange={e => setNewCashFlow(p => ({ ...p, amount: e.target.value }))} />
+            </div>
+            <div className="col-span-2">
+              <Label>Категория</Label>
+              <Input value={newCashFlow.category} onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Дата (план)</Label>
+              <Input
+                value={newCashFlow.plannedDate}
+                type="date"
+                onChange={e => setNewCashFlow(p => ({ ...p, plannedDate: e.target.value }))}
+              />
+            </div>
+            <div className="flex items-center space-x-2 pt-6">
+              <input
+                type="checkbox"
+                checked={newCashFlow.plannedOnly}
+                onChange={e => setNewCashFlow(p => ({ ...p, plannedOnly: e.target.checked }))}
+                className="rounded"
+                id="plannedOnlyEdit"
+              />
+              <Label htmlFor="plannedOnlyEdit">Только план (без факта)</Label>
+            </div>
+            <div className="col-span-2">
+              <Label>Счет</Label>
+              <select
+                className="w-full border rounded-md p-2"
+                value={newCashFlow.accountId}
+                onChange={e => setNewCashFlow(p => ({ ...p, accountId: e.target.value }))}
+              >
+                <option value="">Выберите счет</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <Label>Описание</Label>
+              <Input value={newCashFlow.description} onChange={e => setNewCashFlow(p => ({ ...p, description: e.target.value }))} />
+            </div>
+            <div className="col-span-2 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsEditCashFlowDialogOpen(false)}>
+                Отмена
+              </Button>
+              <Button onClick={() => handleUpdateCashFlow().catch(err => alert(err.message))}>Сохранить</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditAccountDialogOpen} onOpenChange={setIsEditAccountDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Редактировать счет</DialogTitle>
+            <DialogDescription>Изменение остатка перезапишет текущее значение баланса счета</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Название</Label>
+              <Input value={editAccount.name} onChange={e => setEditAccount(p => ({ ...p, name: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Остаток</Label>
+              <Input
+                value={editAccount.balance}
+                type="number"
+                onChange={e => setEditAccount(p => ({ ...p, balance: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>Тип</Label>
+              <select
+                className="w-full border rounded-md p-2"
+                value={editAccount.type}
+                onChange={e => setEditAccount(p => ({ ...p, type: e.target.value as AccountType }))}
+              >
+                <option value="BANK">Банк</option>
+                <option value="CASH">Наличные</option>
+                <option value="DIGITAL">Электронный</option>
+              </select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsEditAccountDialogOpen(false)}>
+                Отмена
+              </Button>
+              <Button onClick={() => handleUpdateAccount().catch(err => alert(err.message))}>Сохранить</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
@@ -306,7 +516,7 @@ export function Treasury() {
               <TrendingUp className="h-5 w-5" />
               Счета
             </CardTitle>
-            <CardDescription>Остатки вводятся вручную</CardDescription>
+            <CardDescription>Остатки вводятся вручную (текущее)</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -315,6 +525,7 @@ export function Treasury() {
                   <TableHead>Название</TableHead>
                   <TableHead>Тип</TableHead>
                   <TableHead className="text-right">Остаток</TableHead>
+                  <TableHead className="w-[120px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -325,6 +536,16 @@ export function Treasury() {
                       <Badge variant="secondary">{accountTypeLabel[a.type]}</Badge>
                     </TableCell>
                     <TableCell className="text-right font-medium">{formatCurrency(a.balance)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEditAccount(a)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteAccount(a.id).catch(err => alert(err.message))}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -336,9 +557,7 @@ export function Treasury() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Платежный календарь (прогноз)</CardTitle>
-          <CardDescription>
-            Баланс = Деньги на счетах + Ожидаемый приход (по сделкам) - Обязательные расходы (план)
-          </CardDescription>
+          <CardDescription>Баланс = Остаток сейчас + Ожидаемый приход (сделки) - Оставшиеся расходы (план)</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -388,6 +607,7 @@ export function Treasury() {
                 <TableHead>План</TableHead>
                 <TableHead>Факт</TableHead>
                 <TableHead className="text-right">Сумма</TableHead>
+                <TableHead className="w-[120px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -397,8 +617,18 @@ export function Treasury() {
                   <TableCell>{c.category}</TableCell>
                   <TableCell>{c.account?.name ?? '-'}</TableCell>
                   <TableCell>{formatDate(c.plannedDate)}</TableCell>
-                  <TableCell>{c.actualDate ? formatDate(c.actualDate) : '-'}</TableCell>
+                  <TableCell>{formatDate(c.actualDate)}</TableCell>
                   <TableCell className="text-right font-medium">{formatCurrency(c.amount)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => openEditCashFlow(c)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteCashFlow(c.id).catch(err => alert(err.message))}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -408,4 +638,3 @@ export function Treasury() {
     </div>
   )
 }
-
