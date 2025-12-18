@@ -31,6 +31,8 @@ async function main() {
         amount: 500,
         category: 'Test',
         plannedDate: new Date(),
+        actualDate: new Date(),
+        status: 'PAID' as const,
         accountId: account.id
     };
 

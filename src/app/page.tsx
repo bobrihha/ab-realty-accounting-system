@@ -15,6 +15,7 @@ import { signOut } from 'next-auth/react'
 import { useSession } from 'next-auth/react'
 import { Badge } from '@/components/ui/badge'
 import { DollarSign, FileText, TrendingUp, TrendingDown } from 'lucide-react'
+import { MetricHelp } from '@/components/help/metric-help'
 
 interface KPICard {
   title: string
@@ -177,7 +178,61 @@ export default function Dashboard() {
                   {kpi.title}
                 </CardTitle>
                 <div className={kpi.color}>
-                  {kpi.icon}
+                  <MetricHelp
+                    title={kpi.title}
+                    description="Пояснение расчета показателя"
+                    trigger={kpi.icon}
+                    summary={
+                      kpi.title === 'Ожидаю итого'
+                        ? 'Показывает, сколько комиссионных в сумме “в работе” по всем не отмененным сделкам.'
+                        : kpi.title === 'В задатках'
+                          ? 'Показывает, сколько комиссионных приходится на сделки, где уже внесен задаток.'
+                          : kpi.title === 'На оплате'
+                            ? 'Показывает, сколько комиссионных “в дебиторке”: сделки на финальных этапах, где ждем оплату.'
+                            : 'Показывает прибыль по закрытым сделкам за текущий месяц (по формуле сделки).'
+                    }
+                    details={
+                      kpi.title === 'Ожидаю итого' ? (
+                        <div className="space-y-2">
+                          <div className="font-medium">Как считается</div>
+                          <div className="text-muted-foreground">Складываем комиссию агентства по всем сделкам, которые не отменены.</div>
+                          <div className="text-muted-foreground">
+                            Это “потенциал” по сделкам в работе: часть из них может быть еще на ранних этапах.
+                          </div>
+                          <div className="text-muted-foreground">Число рядом — сколько сделок попало в расчет.</div>
+                        </div>
+                      ) : kpi.title === 'В задатках' ? (
+                        <div className="space-y-2">
+                          <div className="font-medium">Как считается</div>
+                          <div className="text-muted-foreground">
+                            Складываем комиссию агентства по сделкам со статусом «Задаток» (не отмененные).
+                          </div>
+                          <div className="text-muted-foreground">Число рядом — сколько таких сделок.</div>
+                        </div>
+                      ) : kpi.title === 'На оплате' ? (
+                        <div className="space-y-2">
+                          <div className="font-medium">Как считается</div>
+                          <div className="text-muted-foreground">
+                            Складываем комиссию агентства по сделкам на этапах «Регистрация / Ожидание счета / Ожидание оплаты» (не отмененные).
+                          </div>
+                          <div className="text-muted-foreground">Это сумма, которую ожидаем получить в ближайшее время.</div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="font-medium">Как считается</div>
+                          <div className="text-muted-foreground">
+                            Берем все закрытые сделки текущего месяца и складываем их «чистую прибыль по сделке».
+                          </div>
+                          <div className="text-muted-foreground">
+                            Чистая прибыль по сделке = комиссия агентства − налоги − внешние расходы (юрист/ипотека/реклама по сделке и т.п.) − зарплата (агенту и РОПу).
+                          </div>
+                          <div className="text-muted-foreground">
+                            Важно: это прибыль именно по сделкам, без учета постоянных расходов офиса (аренда, сервисы и т.п.).
+                          </div>
+                        </div>
+                      )
+                    }
+                  />
                 </div>
               </CardHeader>
               <CardContent>

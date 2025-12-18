@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
           type: 'EXPENSE',
           amount,
           category,
+          status: 'PAID',
           plannedDate: paidAt,
           actualDate: paidAt,
           description: cfDescription,

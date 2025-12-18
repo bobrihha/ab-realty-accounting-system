@@ -9,10 +9,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertTriangle, Edit, Plus, RefreshCw, Trash2, TrendingUp, Wallet } from 'lucide-react'
+import { AlertTriangle, CircleHelp, Edit, Plus, RefreshCw, Trash2, TrendingUp, Wallet } from 'lucide-react'
+import { MetricHelp } from '@/components/help/metric-help'
 
 type AccountType = 'BANK' | 'CASH' | 'DIGITAL'
 type CashFlowType = 'INCOME' | 'EXPENSE'
+type PaymentStatus = 'PLANNED' | 'PAID'
 
 type Account = {
   id: string
@@ -26,11 +28,12 @@ type CashFlowItem = {
   type: CashFlowType
   amount: number
   category: string
+  status: PaymentStatus
   plannedDate: string
   actualDate: string | null
   description: string | null
-  accountId: string
-  account: Account
+  accountId: string | null
+  account: Account | null
 }
 
 type MonthlyForecast = {
@@ -48,6 +51,7 @@ export function Treasury() {
   const [cashFlow, setCashFlow] = useState<CashFlowItem[]>([])
   const [forecast, setForecast] = useState<MonthlyForecast[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false)
   const [isCashFlowDialogOpen, setIsCashFlowDialogOpen] = useState(false)
@@ -61,18 +65,41 @@ export function Treasury() {
   const [editAccount, setEditAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
   const [newCashFlow, setNewCashFlow] = useState({
     type: 'INCOME' as CashFlowType,
+    status: 'PAID' as PaymentStatus,
     amount: '',
     category: '',
     plannedDate: '',
+    actualDate: '',
     description: '',
-    accountId: '',
-    plannedOnly: false
+    accountId: ''
   })
 
   const load = async () => {
     setLoading(true)
+    setError(null)
     const res = await fetch('/api/treasury?months=12', { cache: 'no-store' })
-    if (!res.ok) throw new Error('Не удалось загрузить казначейство')
+    const redirectLocation = res.headers.get('location')
+    if ((res.status === 302 || res.status === 307) && redirectLocation) {
+      window.location.assign(redirectLocation)
+      return
+    }
+    if (res.redirected && new URL(res.url).pathname.startsWith('/auth/signin')) {
+      window.location.assign(res.url)
+      return
+    }
+    if (!res.ok) {
+      const ct = res.headers.get('content-type') ?? ''
+      if (ct.includes('application/json')) {
+        const body = await res.json().catch(() => null)
+        const msg = body?.error ? String(body.error) : `HTTP ${res.status}`
+        throw new Error(msg)
+      }
+      throw new Error(`Не удалось загрузить казначейство (HTTP ${res.status})`)
+    }
+    const ct = res.headers.get('content-type') ?? ''
+    if (!ct.includes('application/json')) {
+      throw new Error('Не удалось загрузить казначейство (ожидался JSON)')
+    }
     const data = await res.json()
     setAccounts(data.accounts ?? [])
     setCashFlow(data.cashFlow ?? [])
@@ -83,6 +110,7 @@ export function Treasury() {
   useEffect(() => {
     load().catch(err => {
       console.error(err)
+      setError(err?.message ? String(err.message) : 'Ошибка загрузки')
       setLoading(false)
     })
   }, [])
@@ -110,12 +138,28 @@ export function Treasury() {
     setEditingCashFlow(item)
     setNewCashFlow({
       type: item.type,
+      status: item.status,
       amount: String(item.amount),
       category: item.category,
       plannedDate: item.plannedDate.slice(0, 10),
+      actualDate: item.actualDate ? item.actualDate.slice(0, 10) : '',
       description: item.description ?? '',
-      accountId: item.accountId,
-      plannedOnly: item.actualDate === null
+      accountId: item.accountId ?? ''
+    })
+    setIsEditCashFlowDialogOpen(true)
+  }
+
+  const openPayCashFlow = (item: CashFlowItem) => {
+    setEditingCashFlow(item)
+    setNewCashFlow({
+      type: item.type,
+      status: 'PAID',
+      amount: String(item.amount),
+      category: item.category,
+      plannedDate: item.plannedDate.slice(0, 10),
+      actualDate: item.actualDate ? item.actualDate.slice(0, 10) : item.plannedDate.slice(0, 10),
+      description: item.description ?? '',
+      accountId: item.accountId ?? ''
     })
     setIsEditCashFlowDialogOpen(true)
   }
@@ -161,58 +205,62 @@ export function Treasury() {
   }
 
   const handleDeleteAccount = async (accountId: string) => {
-    if (!confirm('Удалить счет? Операции по нему также будут удалены.')) return
+    if (!confirm('Удалить счет? Операции сохранятся, но потеряют привязку к счету.')) return
     const res = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE' })
     if (!res.ok) throw new Error('Не удалось удалить счет')
     await load()
   }
 
   const handleAddCashFlow = async () => {
-    if (!newCashFlow.accountId) throw new Error('Выберите счет')
     const plannedDate = newCashFlow.plannedDate ? newCashFlow.plannedDate : new Date().toISOString().slice(0, 10)
+    const status = newCashFlow.status
+    if (status === 'PAID' && !newCashFlow.accountId) throw new Error('Выберите счет для факта оплаты')
 
     const res = await fetch('/api/treasury?type=cashflow', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: newCashFlow.type,
+        status,
         amount: parseFloat(newCashFlow.amount) || 0,
         category: newCashFlow.category,
         plannedDate,
-        actualDate: newCashFlow.plannedOnly ? null : plannedDate,
+        actualDate: status === 'PAID' ? (newCashFlow.actualDate || plannedDate) : null,
         description: newCashFlow.description || null,
-        accountId: newCashFlow.accountId
+        accountId: status === 'PAID' ? newCashFlow.accountId : null
       })
     })
     if (!res.ok) throw new Error('Не удалось добавить операцию')
     setIsCashFlowDialogOpen(false)
-    setNewCashFlow({ type: 'INCOME', amount: '', category: '', plannedDate: '', description: '', accountId: '', plannedOnly: false })
+    setNewCashFlow({ type: 'INCOME', status: 'PAID', amount: '', category: '', plannedDate: '', actualDate: '', description: '', accountId: '' })
     await load()
   }
 
   const handleUpdateCashFlow = async () => {
     if (!editingCashFlow) return
-    if (!newCashFlow.accountId) throw new Error('Выберите счет')
     const plannedDate = newCashFlow.plannedDate ? newCashFlow.plannedDate : new Date().toISOString().slice(0, 10)
+    const status = newCashFlow.status
+    if (status === 'PAID' && !newCashFlow.accountId) throw new Error('Выберите счет для факта оплаты')
 
     const res = await fetch(`/api/cash-flow/${editingCashFlow.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: newCashFlow.type,
+        status,
         amount: parseFloat(newCashFlow.amount) || 0,
         category: newCashFlow.category,
         plannedDate,
-        actualDate: newCashFlow.plannedOnly ? null : plannedDate,
+        actualDate: status === 'PAID' ? (newCashFlow.actualDate || plannedDate) : null,
         description: newCashFlow.description || null,
-        accountId: newCashFlow.accountId
+        accountId: status === 'PAID' ? newCashFlow.accountId : null
       })
     })
 
     if (!res.ok) throw new Error('Не удалось обновить операцию')
     setIsEditCashFlowDialogOpen(false)
     setEditingCashFlow(null)
-    setNewCashFlow({ type: 'INCOME', amount: '', category: '', plannedDate: '', description: '', accountId: '', plannedOnly: false })
+    setNewCashFlow({ type: 'INCOME', status: 'PAID', amount: '', category: '', plannedDate: '', actualDate: '', description: '', accountId: '' })
     await load()
   }
 
@@ -236,6 +284,12 @@ export function Treasury() {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Казначейство</h2>
@@ -334,31 +388,44 @@ export function Treasury() {
                     onChange={e => setNewCashFlow(p => ({ ...p, plannedDate: e.target.value }))}
                   />
                 </div>
-                <div className="flex items-center space-x-2 pt-6">
-                  <input
-                    type="checkbox"
-                    checked={newCashFlow.plannedOnly}
-                    onChange={e => setNewCashFlow(p => ({ ...p, plannedOnly: e.target.checked }))}
-                    className="rounded"
-                    id="plannedOnly"
-                  />
-                  <Label htmlFor="plannedOnly">Только план (без факта)</Label>
-                </div>
-                <div className="col-span-2">
-                  <Label>Счет</Label>
+                <div>
+                  <Label>Статус</Label>
                   <select
                     className="w-full border rounded-md p-2"
-                    value={newCashFlow.accountId}
-                    onChange={e => setNewCashFlow(p => ({ ...p, accountId: e.target.value }))}
+                    value={newCashFlow.status}
+                    onChange={e => setNewCashFlow(p => ({ ...p, status: e.target.value as PaymentStatus }))}
                   >
-                    <option value="">Выберите счет</option>
-                    {accounts.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
+                    <option value="PLANNED">План</option>
+                    <option value="PAID">Факт (оплачено)</option>
                   </select>
                 </div>
+                {newCashFlow.status === 'PAID' && (
+                  <>
+                    <div>
+                      <Label>Дата (факт)</Label>
+                      <Input
+                        value={newCashFlow.actualDate}
+                        type="date"
+                        onChange={e => setNewCashFlow(p => ({ ...p, actualDate: e.target.value }))}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Label>Счет</Label>
+                      <select
+                        className="w-full border rounded-md p-2"
+                        value={newCashFlow.accountId}
+                        onChange={e => setNewCashFlow(p => ({ ...p, accountId: e.target.value }))}
+                      >
+                        <option value="">Выберите счет</option>
+                        {accounts.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
                 <div className="col-span-2">
                   <Label>Описание</Label>
                   <Input value={newCashFlow.description} onChange={e => setNewCashFlow(p => ({ ...p, description: e.target.value }))} />
@@ -416,31 +483,44 @@ export function Treasury() {
                 onChange={e => setNewCashFlow(p => ({ ...p, plannedDate: e.target.value }))}
               />
             </div>
-            <div className="flex items-center space-x-2 pt-6">
-              <input
-                type="checkbox"
-                checked={newCashFlow.plannedOnly}
-                onChange={e => setNewCashFlow(p => ({ ...p, plannedOnly: e.target.checked }))}
-                className="rounded"
-                id="plannedOnlyEdit"
-              />
-              <Label htmlFor="plannedOnlyEdit">Только план (без факта)</Label>
-            </div>
-            <div className="col-span-2">
-              <Label>Счет</Label>
+            <div>
+              <Label>Статус</Label>
               <select
                 className="w-full border rounded-md p-2"
-                value={newCashFlow.accountId}
-                onChange={e => setNewCashFlow(p => ({ ...p, accountId: e.target.value }))}
+                value={newCashFlow.status}
+                onChange={e => setNewCashFlow(p => ({ ...p, status: e.target.value as PaymentStatus }))}
               >
-                <option value="">Выберите счет</option>
-                {accounts.map(a => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
+                <option value="PLANNED">План</option>
+                <option value="PAID">Факт (оплачено)</option>
               </select>
             </div>
+            {newCashFlow.status === 'PAID' && (
+              <>
+                <div>
+                  <Label>Дата (факт)</Label>
+                  <Input
+                    value={newCashFlow.actualDate}
+                    type="date"
+                    onChange={e => setNewCashFlow(p => ({ ...p, actualDate: e.target.value }))}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>Счет</Label>
+                  <select
+                    className="w-full border rounded-md p-2"
+                    value={newCashFlow.accountId}
+                    onChange={e => setNewCashFlow(p => ({ ...p, accountId: e.target.value }))}
+                  >
+                    <option value="">Выберите счет</option>
+                    {accounts.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
             <div className="col-span-2">
               <Label>Описание</Label>
               <Input value={newCashFlow.description} onChange={e => setNewCashFlow(p => ({ ...p, description: e.target.value }))} />
@@ -500,7 +580,23 @@ export function Treasury() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Wallet className="h-5 w-5" />
+              <MetricHelp
+                title="Общий остаток"
+                description="Что это за сумма"
+                trigger={<Wallet className="h-5 w-5" />}
+                summary="Сколько денег сейчас на всех счетах."
+                details={
+                  <div className="space-y-2">
+                    <div className="font-medium">Как считается</div>
+                    <div className="text-muted-foreground">
+                      Это сумма остатков по всем счетам (банк/наличные/электронные).
+                    </div>
+                    <div className="text-muted-foreground">
+                      Баланс счета меняется только по операциям со статусом «Факт (оплачено)».
+                    </div>
+                  </div>
+                }
+              />
               Общий остаток
             </CardTitle>
             <CardDescription>Сумма остатков по счетам</CardDescription>
@@ -513,7 +609,23 @@ export function Treasury() {
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
+              <MetricHelp
+                title="Счета"
+                description="Что здесь важно"
+                trigger={<TrendingUp className="h-5 w-5" />}
+                summary="Здесь хранится текущий остаток денег по каждому счету."
+                details={
+                  <div className="space-y-2">
+                    <div className="font-medium">Как это работает</div>
+                    <div className="text-muted-foreground">
+                      Остаток по счету можно задать вручную, а дальше он автоматически меняется, когда вы отмечаете операции как «Факт (оплачено)».
+                    </div>
+                    <div className="text-muted-foreground">
+                      Плановые операции («План») не списывают деньги со счета — они нужны для прогноза.
+                    </div>
+                  </div>
+                }
+              />
               Счета
             </CardTitle>
             <CardDescription>Остатки вводятся вручную (текущее)</CardDescription>
@@ -555,8 +667,37 @@ export function Treasury() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-lg">Платежный календарь (прогноз)</CardTitle>
+          <MetricHelp
+            title="Платежный календарь (прогноз)"
+            description="Как считаются цифры"
+            trigger={<CircleHelp className="h-5 w-5 text-gray-500" />}
+            summary="Показывает, хватит ли денег с учетом ожидаемых поступлений и плановых расходов."
+            details={
+              <div className="space-y-2">
+                <div className="font-medium">Открытие</div>
+                <div className="text-muted-foreground">
+                  Это текущие деньги на счетах на начало месяца (берется из «Счета»).
+                </div>
+                <div className="font-medium">Ожидаю приход</div>
+                <div className="text-muted-foreground">
+                  Прогноз по сделкам: сумма комиссий по сделкам, которые должны закрыться в этом месяце и находятся в ожидании оплаты.
+                </div>
+                <div className="font-medium">План расходов</div>
+                <div className="text-muted-foreground">
+                  Сумма плановых расходов по операциям со статусом «План» в этом месяце.
+                </div>
+                <div className="font-medium">Закрытие</div>
+                <div className="text-muted-foreground">
+                  Формула: Открытие + Ожидаю приход − План расходов.
+                </div>
+                <div className="text-muted-foreground">
+                  Фактические операции («Факт») уже учтены в балансах счетов, поэтому в прогнозе мы вычитаем только «План».
+                </div>
+              </div>
+            }
+          />
           <CardDescription>Баланс = Остаток сейчас + Ожидаемый приход (сделки) - Оставшиеся расходы (план)</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -593,8 +734,29 @@ export function Treasury() {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-lg">Операции</CardTitle>
+          <MetricHelp
+            title="Операции"
+            description="Что значит План/Факт"
+            trigger={<CircleHelp className="h-5 w-5 text-gray-500" />}
+            summary="Единый список всех денежных операций: планируем и отмечаем оплату."
+            details={
+              <div className="space-y-2">
+                <div className="font-medium">План</div>
+                <div className="text-muted-foreground">
+                  Деньги еще не списаны/не получены. Такая операция влияет только на прогноз в календаре.
+                </div>
+                <div className="font-medium">Факт (оплачено)</div>
+                <div className="text-muted-foreground">
+                  Деньги реально пришли или ушли со счета. При переводе в «Факт» баланс выбранного счета автоматически меняется.
+                </div>
+                <div className="text-muted-foreground">
+                  «Оплатить» — это быстрый способ перевести плановую операцию в факт.
+                </div>
+              </div>
+            }
+          />
           <CardDescription>Единая база всех транзакций (план/факт)</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -606,6 +768,7 @@ export function Treasury() {
                 <TableHead>Счет</TableHead>
                 <TableHead>План</TableHead>
                 <TableHead>Факт</TableHead>
+                <TableHead>Статус</TableHead>
                 <TableHead className="text-right">Сумма</TableHead>
                 <TableHead className="w-[120px]"></TableHead>
               </TableRow>
@@ -618,9 +781,19 @@ export function Treasury() {
                   <TableCell>{c.account?.name ?? '-'}</TableCell>
                   <TableCell>{formatDate(c.plannedDate)}</TableCell>
                   <TableCell>{formatDate(c.actualDate)}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className={c.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                      {c.status === 'PAID' ? 'Факт' : 'План'}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right font-medium">{formatCurrency(c.amount)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
+                      {c.status === 'PLANNED' && (
+                        <Button variant="ghost" size="sm" onClick={() => openPayCashFlow(c)}>
+                          Оплатить
+                        </Button>
+                      )}
                       <Button variant="ghost" size="sm" onClick={() => openEditCashFlow(c)}>
                         <Edit className="h-4 w-4" />
                       </Button>

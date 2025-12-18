@@ -70,14 +70,18 @@ export async function POST(request: NextRequest) {
         )
 
       case 'cashflow':
-        if (!data.accountId) {
-          return NextResponse.json({ error: 'accountId is required' }, { status: 400 })
-        }
-
         const typeUpper = String(data.type ?? 'EXPENSE').toUpperCase() as 'INCOME' | 'EXPENSE'
         const amount = Number(data.amount ?? 0)
-        const actualDate = data.actualDate ? new Date(data.actualDate) : null
-        const delta = actualDate ? (typeUpper === 'INCOME' ? 1 : -1) * amount : 0
+        const plannedDate = data.plannedDate ? new Date(data.plannedDate) : new Date()
+        const statusUpper = String(data.status ?? (data.actualDate ? 'PAID' : 'PLANNED')).toUpperCase() as 'PLANNED' | 'PAID'
+        const nextActualDate = statusUpper === 'PAID' ? (data.actualDate ? new Date(data.actualDate) : plannedDate) : null
+        const nextAccountId = statusUpper === 'PAID' ? String(data.accountId ?? '') : (data.accountId === null ? null : data.accountId ? String(data.accountId) : null)
+
+        if (statusUpper === 'PAID' && !nextAccountId) {
+          return NextResponse.json({ error: 'accountId is required for PAID operations' }, { status: 400 })
+        }
+
+        const delta = statusUpper === 'PAID' && nextActualDate && nextAccountId ? (typeUpper === 'INCOME' ? 1 : -1) * amount : 0
 
         const created = await db.$transaction(async tx => {
           const cashFlow = await tx.cashFlow.create({
@@ -85,16 +89,17 @@ export async function POST(request: NextRequest) {
               type: typeUpper,
               amount,
               category: String(data.category ?? ''),
-              plannedDate: data.plannedDate ? new Date(data.plannedDate) : new Date(),
-              actualDate,
+              status: statusUpper,
+              plannedDate,
+              actualDate: nextActualDate,
               description: data.description ? String(data.description) : null,
-              accountId: String(data.accountId)
+              accountId: nextAccountId
             }
           })
 
           if (delta !== 0) {
             await tx.account.update({
-              where: { id: String(data.accountId) },
+              where: { id: nextAccountId! },
               data: { balance: { increment: delta } }
             })
           }
@@ -146,7 +151,7 @@ async function computeForecast(months: number) {
     const plannedExpenses = await db.cashFlow.aggregate({
       // Opening balance is taken from current account balances (includes already paid operations),
       // so for forecast we subtract only expenses that are not marked as paid yet.
-      where: { type: 'EXPENSE', plannedDate: { gte: from, lte: to }, actualDate: null },
+      where: { type: 'EXPENSE', status: 'PLANNED', plannedDate: { gte: from, lte: to } },
       _sum: { amount: true }
     })
 

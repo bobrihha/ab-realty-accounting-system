@@ -24,12 +24,14 @@ function normalizeDealExpenses<T extends { brokerExpense?: number; lawyerExpense
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession()
+    const { id } = await params
+
     const deal = await db.deal.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: { agent: true, rop: true }
     })
 
@@ -58,14 +60,16 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession()
     if (session.role !== 'OWNER') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    const existing = await db.deal.findUnique({ where: { id: params.id } })
+
+    const { id } = await params
+    const existing = await db.deal.findUnique({ where: { id } })
     if (!existing) return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
 
     const data = await request.json()
@@ -173,7 +177,7 @@ export async function PUT(
     }
 
     const deal = await db.deal.update({
-      where: { id: params.id },
+      where: { id },
       data: update,
       include: { agent: true, rop: true }
     })
@@ -194,17 +198,19 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await requireSession()
     if (session.role !== 'OWNER') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    const existing = await db.deal.findUnique({ where: { id: params.id } })
+
+    const { id } = await params
+    const existing = await db.deal.findUnique({ where: { id } })
     if (!existing) return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
 
-    await db.deal.delete({ where: { id: params.id } })
+    await db.deal.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if ((error as Error).message === 'UNAUTHORIZED') {

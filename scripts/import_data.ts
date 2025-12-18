@@ -431,6 +431,9 @@ async function importCashFlow() {
   });
 
   const defaultAccount = await prisma.account.findFirst();
+  if (!defaultAccount) {
+    throw new Error('Не найден ни один Account: создайте счет перед импортом.');
+  }
 
   for (const row of records) {
     const category = row['НАИМЕНОВАНИЕ'] || row['category'];
@@ -451,7 +454,9 @@ async function importCashFlow() {
         amount,
         category,
         plannedDate: new Date(),
-        accountId: defaultAccount?.id || '',
+        actualDate: new Date(),
+        status: 'PAID',
+        accountId: defaultAccount.id,
         description: row['КОММЕНТАРИЙ'] || '',
       }
     });

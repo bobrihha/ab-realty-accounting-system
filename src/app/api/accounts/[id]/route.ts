@@ -6,17 +6,18 @@ function canEditTreasury(role: string) {
   return role === 'OWNER' || role === 'ACCOUNTANT'
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession()
     if (!canEditTreasury(session.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+    const { id } = await params
     const data = await request.json()
     const updated = await db.account.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         name: data.name ?? undefined,
-        type: data.type ? String(data.type).toUpperCase() : undefined,
+        type: data.type ? (String(data.type).toUpperCase() as any) : undefined,
         balance: data.balance !== undefined ? Number(data.balance) : undefined
       }
     })
@@ -29,12 +30,13 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession()
     if (!canEditTreasury(session.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    await db.account.delete({ where: { id: params.id } })
+    const { id } = await params
+    await db.account.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if ((error as Error).message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

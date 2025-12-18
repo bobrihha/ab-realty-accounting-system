@@ -99,13 +99,14 @@ model CashFlow {
   type        CashFlowType // INCOME, EXPENSE
   amount      Float
   category    String
+  status      PaymentStatus @default(PLANNED) // PLANNED (план), PAID (факт)
   plannedDate DateTime
   actualDate  DateTime?
   description String?
-  accountId   String
+  accountId   String?
   createdAt   DateTime     @default(now())
 
-  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account     Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
   payrollPayments PayrollPayment[]
 
   @@map("cash_flow")
@@ -138,19 +139,6 @@ model CashFlowForecast {
   updatedAt        DateTime   @updatedAt
 
   @@map("cash_flow_forecasts")
-}
-
-// Расходы по категориям
-model Expense {
-  id          String   @id @default(cuid())
-  category    String
-  amount      Float
-  date        DateTime
-  description String?
-  month       String   // Для группировки по месяцам
-  createdAt   DateTime @default(now())
-
-  @@map("expenses")
 }
 
 // Начисления и выплаты ЗП (по сделкам)
@@ -221,6 +209,11 @@ enum ContractType {
 enum PayrollType {
   AGENT
   ROP
+}
+
+enum PaymentStatus {
+  PLANNED
+  PAID
 }
 
 enum RateType {

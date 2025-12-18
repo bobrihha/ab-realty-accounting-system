@@ -20,9 +20,14 @@ export async function GET(request: NextRequest) {
       select: { dealDate: true, commission: true, netProfit: true }
     })
 
-    const expenses = await db.expense.findMany({
-      where: { date: { gte: from, lte: to } },
-      select: { date: true, category: true, amount: true }
+    const paidCashExpenses = await db.cashFlow.findMany({
+      where: {
+        type: 'EXPENSE',
+        status: 'PAID',
+        actualDate: { gte: from, lte: to },
+        payrollPayments: { none: {} }
+      },
+      select: { actualDate: true, plannedDate: true, category: true, amount: true }
     })
 
     const payrollAccrualClient = (db as any).payrollAccrual
@@ -62,8 +67,9 @@ export async function GET(request: NextRequest) {
       byMonth[mk].netProfitFromDeals += d.netProfit ?? 0
     }
 
-    for (const e of expenses) {
-      const mk = monthKey(e.date)
+    for (const e of paidCashExpenses) {
+      const date = e.actualDate ?? e.plannedDate
+      const mk = monthKey(date)
       byMonth[mk].expensesByCategory[e.category] = (byMonth[mk].expensesByCategory[e.category] ?? 0) + e.amount
     }
 
@@ -110,32 +116,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireSession()
-    if (session.role !== 'OWNER' && session.role !== 'ACCOUNTANT') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const data = await request.json()
-    const date = data.date ? new Date(data.date) : new Date()
-    const exp = await db.expense.create({
-      data: {
-        category: String(data.category ?? ''),
-        amount: Number(data.amount ?? 0),
-        date,
-        description: data.description ? String(data.description) : null,
-        month: monthKey(date)
-      }
-    })
-
-    return NextResponse.json(exp, { status: 201 })
+    await requireSession()
+    return NextResponse.json(
+      { error: 'Расходы вводятся через Казначейство (CashFlow). Финансы — только отчет.' },
+      { status: 405 }
+    )
   } catch (error) {
     if ((error as Error).message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Error adding expense:', error)
-    return NextResponse.json(
-      { error: 'Failed to add expense' },
-      { status: 500 }
-    )
+    console.error('Error in finance POST:', error)
+    return NextResponse.json({ error: 'Failed to handle request' }, { status: 500 })
   }
 }

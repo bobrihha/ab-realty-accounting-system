@@ -4,19 +4,20 @@ import { requireSession } from '@/lib/guards'
 import { hash } from 'bcryptjs'
 import { Prisma } from '@prisma/client'
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession()
     if (session.role !== 'OWNER') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    const { id } = await params
     const data = await request.json()
 
     const passwordHash = data.password ? await hash(String(data.password), 10) : undefined
 
     const employee = await db.employee.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         name: data.name ?? undefined,
         email: data.email ? String(data.email).trim().toLowerCase() : undefined,
@@ -44,16 +45,18 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession()
     if (session.role !== 'OWNER') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    const { id } = await params
+
     // Check for dependencies
     const employee = await db.employee.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         dealsAsAgent: { select: { id: true }, take: 1 },
         dealsAsROP: { select: { id: true }, take: 1 },
@@ -76,7 +79,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: 'Нельзя удалить сотрудника: он указан руководителем у других сотрудников. Сначала переназначьте РОПа.' }, { status: 409 })
     }
 
-    await db.employee.delete({ where: { id: params.id } })
+    await db.employee.delete({ where: { id } })
 
     return NextResponse.json({ success: true })
   } catch (error) {
