@@ -64,6 +64,8 @@ const contractTypeLabels: Record<ContractType, string> = {
   SELLER: 'Договор продавца'
 }
 
+const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
+
 export function DealsRegistry() {
   const { data: session } = useSession()
   const role = ((session as any)?.role as string | undefined) ?? 'AGENT'
@@ -77,6 +79,10 @@ export function DealsRegistry() {
   const [agentFilter, setAgentFilter] = useState<string>('all')
   const [legalServicesFilter, setLegalServicesFilter] = useState<string>('all')
   const [contractTypeFilter, setContractTypeFilter] = useState<string>('all')
+
+  const currentYear = new Date().getFullYear()
+  const [yearFilter, setYearFilter] = useState<string>('all')
+  const [monthFilter, setMonthFilter] = useState<string>('all')
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
@@ -143,9 +149,22 @@ export function DealsRegistry() {
         (legalServicesFilter === 'yes' && deal.legalServices) ||
         (legalServicesFilter === 'no' && !deal.legalServices)
       const matchesContractType = contractTypeFilter === 'all' || deal.contractType === contractTypeFilter
-      return matchesSearch && matchesStatus && matchesAgent && matchesLegalServices && matchesContractType
+
+      // Фильтр по году/месяцу (по дате задатка)
+      let matchesPeriod = true
+      if (yearFilter !== 'all' || monthFilter !== 'all') {
+        const date = new Date(deal.depositDate)
+        if (yearFilter !== 'all' && date.getFullYear() !== Number(yearFilter)) {
+          matchesPeriod = false
+        }
+        if (monthFilter !== 'all' && date.getMonth() + 1 !== Number(monthFilter)) {
+          matchesPeriod = false
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesAgent && matchesLegalServices && matchesContractType && matchesPeriod
     })
-  }, [agentFilter, contractTypeFilter, deals, legalServicesFilter, searchTerm, statusFilter])
+  }, [agentFilter, contractTypeFilter, deals, legalServicesFilter, searchTerm, statusFilter, yearFilter, monthFilter])
 
   const resetForm = () => {
     setFormData({
@@ -570,6 +589,28 @@ export function DealsRegistry() {
                 <SelectItem value="all">Все типы</SelectItem>
                 {Object.entries(contractTypeLabels).map(([key, label]) => (
                   <SelectItem key={key} value={key}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={yearFilter} onValueChange={v => { setYearFilter(v); if (v === 'all') setMonthFilter('all') }}>
+              <SelectTrigger className="w-[100px]">
+                <SelectValue placeholder="Год" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все годы</SelectItem>
+                {Array.from({ length: 5 }, (_, i) => String(currentYear - i)).map(y => (
+                  <SelectItem key={y} value={y}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={monthFilter} onValueChange={setMonthFilter}>
+              <SelectTrigger className="w-[130px]">
+                <SelectValue placeholder="Месяц" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все месяцы</SelectItem>
+                {MONTHS.map((m, i) => (
+                  <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
