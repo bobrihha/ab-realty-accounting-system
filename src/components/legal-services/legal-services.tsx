@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { Plus, Edit, Trash2, RefreshCw, Scale, FileText } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Plus, Edit, Trash2, RefreshCw, Scale, FileText, Calculator, Users } from 'lucide-react'
 
 type LegalService = {
     id: string
@@ -19,17 +20,41 @@ type LegalService = {
     description: string | null
 }
 
+type MonthlyStats = {
+    monthKey: string
+    month: string
+    dealsCount: number
+    dealsAmount: number
+    standaloneCount: number
+    standaloneAmount: number
+    totalCount: number
+    totalAmount: number
+    lawyerSalary: number
+}
+
 type LegalServicesStats = {
-    period: string
-    deals: { count: number; amount: number }
-    standalone: { count: number; amount: number }
-    total: { count: number; amount: number }
+    year: number
+    lawyerRate: number
+    months: MonthlyStats[]
+    totals: {
+        dealsCount: number
+        dealsAmount: number
+        standaloneCount: number
+        standaloneAmount: number
+        totalCount: number
+        totalAmount: number
+        lawyerSalary: number
+    }
 }
 
 export function LegalServicesRegistry() {
     const { data: session } = useSession()
     const role = ((session as any)?.role as string | undefined) ?? 'AGENT'
     const isOwner = role === 'OWNER'
+
+    const currentYear = new Date().getFullYear()
+    const [selectedYear, setSelectedYear] = useState(String(currentYear))
+    const [lawyerRate, setLawyerRate] = useState(60)
 
     const [legalServices, setLegalServices] = useState<LegalService[]>([])
     const [stats, setStats] = useState<LegalServicesStats | null>(null)
@@ -45,17 +70,21 @@ export function LegalServicesRegistry() {
         description: ''
     })
 
+    const loadStats = async () => {
+        const statsRes = await fetch(`/api/legal-services/stats?year=${selectedYear}&lawyerRate=${lawyerRate}`, { cache: 'no-store' })
+        if (statsRes.ok) {
+            setStats(await statsRes.json())
+        }
+    }
+
     const load = async () => {
         setLoading(true)
-        const [servicesRes, statsRes] = await Promise.all([
+        const [servicesRes] = await Promise.all([
             fetch('/api/legal-services', { cache: 'no-store' }),
-            fetch('/api/legal-services/stats', { cache: 'no-store' })
+            loadStats()
         ])
         if (servicesRes.ok) {
             setLegalServices(await servicesRes.json())
-        }
-        if (statsRes.ok) {
-            setStats(await statsRes.json())
         }
         setLoading(false)
     }
@@ -66,6 +95,10 @@ export function LegalServicesRegistry() {
             setLoading(false)
         })
     }, [])
+
+    useEffect(() => {
+        loadStats().catch(console.error)
+    }, [selectedYear, lawyerRate])
 
     const resetForm = () => {
         setFormData({ client: '', amount: '', serviceDate: '', description: '' })
@@ -128,6 +161,8 @@ export function LegalServicesRegistry() {
         })
     }
 
+    const yearOptions = Array.from({ length: 5 }, (_, i) => String(currentYear - i))
+
     if (loading) {
         return (
             <div className="flex items-center justify-center py-12">
@@ -141,12 +176,33 @@ export function LegalServicesRegistry() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900">Юридические услуги</h2>
-                    <p className="text-gray-500">Услуги вне сделок и общая статистика</p>
+                    <p className="text-gray-500">Статистика и управление юр.услугами</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center flex-wrap">
+                    <Select value={selectedYear} onValueChange={setSelectedYear}>
+                        <SelectTrigger className="w-[100px]">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {yearOptions.map(y => (
+                                <SelectItem key={y} value={y}>{y}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <div className="flex items-center gap-2">
+                        <Label className="text-sm whitespace-nowrap">% юриста:</Label>
+                        <Input
+                            type="number"
+                            className="w-[70px]"
+                            value={lawyerRate}
+                            onChange={e => setLawyerRate(Number(e.target.value) || 0)}
+                            min={0}
+                            max={100}
+                        />
+                    </div>
                     <Button variant="outline" onClick={() => load()}>
                         <RefreshCw className="h-4 w-4 mr-2" />
                         Обновить
@@ -211,19 +267,19 @@ export function LegalServicesRegistry() {
                 </div>
             </div>
 
-            {/* Статистика */}
+            {/* Сводные карточки */}
             {stats && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium text-blue-800 flex items-center gap-2">
                                 <FileText className="h-4 w-4" />
-                                Из сделок ({stats.period})
+                                Из сделок ({stats.year})
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-blue-900">{formatCurrency(stats.deals.amount)}</div>
-                            <p className="text-xs text-blue-600 mt-1">{stats.deals.count} услуг</p>
+                            <div className="text-2xl font-bold text-blue-900">{formatCurrency(stats.totals.dealsAmount)}</div>
+                            <p className="text-xs text-blue-600 mt-1">{stats.totals.dealsCount} услуг</p>
                         </CardContent>
                     </Card>
 
@@ -231,28 +287,96 @@ export function LegalServicesRegistry() {
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium text-purple-800 flex items-center gap-2">
                                 <Scale className="h-4 w-4" />
-                                Отдельные ({stats.period})
+                                Отдельные ({stats.year})
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-purple-900">{formatCurrency(stats.standalone.amount)}</div>
-                            <p className="text-xs text-purple-600 mt-1">{stats.standalone.count} услуг</p>
+                            <div className="text-2xl font-bold text-purple-900">{formatCurrency(stats.totals.standaloneAmount)}</div>
+                            <p className="text-xs text-purple-600 mt-1">{stats.totals.standaloneCount} услуг</p>
                         </CardContent>
                     </Card>
 
                     <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium text-green-800 flex items-center gap-2">
-                                <Scale className="h-4 w-4" />
-                                Всего ({stats.period})
+                                <Calculator className="h-4 w-4" />
+                                Всего ({stats.year})
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-green-900">{formatCurrency(stats.total.amount)}</div>
-                            <p className="text-xs text-green-600 mt-1">{stats.total.count} услуг</p>
+                            <div className="text-2xl font-bold text-green-900">{formatCurrency(stats.totals.totalAmount)}</div>
+                            <p className="text-xs text-green-600 mt-1">{stats.totals.totalCount} услуг</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium text-orange-800 flex items-center gap-2">
+                                <Users className="h-4 w-4" />
+                                ЗП юриста ({lawyerRate}%)
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-orange-900">{formatCurrency(stats.totals.lawyerSalary)}</div>
+                            <p className="text-xs text-orange-600 mt-1">за {stats.year} год</p>
                         </CardContent>
                     </Card>
                 </div>
+            )}
+
+            {/* Таблица по месяцам */}
+            {stats && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg">Статистика по месяцам</CardTitle>
+                        <CardDescription>Юр.услуги по дате сделки/услуги, ЗП юриста = {lawyerRate}% от суммы</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="rounded-md border">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Месяц</TableHead>
+                                        <TableHead className="text-right">Кол-во (сделки)</TableHead>
+                                        <TableHead className="text-right">Сумма (сделки)</TableHead>
+                                        <TableHead className="text-right">Кол-во (отд.)</TableHead>
+                                        <TableHead className="text-right">Сумма (отд.)</TableHead>
+                                        <TableHead className="text-right">Всего кол-во</TableHead>
+                                        <TableHead className="text-right">Всего сумма</TableHead>
+                                        <TableHead className="text-right font-bold">ЗП юриста</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {stats.months.map(m => (
+                                        <TableRow key={m.monthKey}>
+                                            <TableCell className="font-medium">{m.month}</TableCell>
+                                            <TableCell className="text-right">{m.dealsCount || '-'}</TableCell>
+                                            <TableCell className="text-right">{m.dealsAmount ? formatCurrency(m.dealsAmount) : '-'}</TableCell>
+                                            <TableCell className="text-right">{m.standaloneCount || '-'}</TableCell>
+                                            <TableCell className="text-right">{m.standaloneAmount ? formatCurrency(m.standaloneAmount) : '-'}</TableCell>
+                                            <TableCell className="text-right font-medium">{m.totalCount || '-'}</TableCell>
+                                            <TableCell className="text-right font-medium">{m.totalAmount ? formatCurrency(m.totalAmount) : '-'}</TableCell>
+                                            <TableCell className="text-right font-bold text-orange-700">
+                                                {m.lawyerSalary ? formatCurrency(m.lawyerSalary) : '-'}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                    {/* Итого */}
+                                    <TableRow className="bg-gray-50 font-bold">
+                                        <TableCell>Итого</TableCell>
+                                        <TableCell className="text-right">{stats.totals.dealsCount}</TableCell>
+                                        <TableCell className="text-right">{formatCurrency(stats.totals.dealsAmount)}</TableCell>
+                                        <TableCell className="text-right">{stats.totals.standaloneCount}</TableCell>
+                                        <TableCell className="text-right">{formatCurrency(stats.totals.standaloneAmount)}</TableCell>
+                                        <TableCell className="text-right">{stats.totals.totalCount}</TableCell>
+                                        <TableCell className="text-right">{formatCurrency(stats.totals.totalAmount)}</TableCell>
+                                        <TableCell className="text-right text-orange-700">{formatCurrency(stats.totals.lawyerSalary)}</TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
             )}
 
             {/* Таблица отдельных юр.услуг */}

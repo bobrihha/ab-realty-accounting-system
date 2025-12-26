@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireSession } from '@/lib/guards'
-import { startOfMonth, endOfMonth, startOfYear, endOfYear } from '@/lib/money'
+import { startOfYear, endOfYear, monthKey, formatMonthLabel } from '@/lib/money'
+
+// ЗП юриста по умолчанию - 60%
+const DEFAULT_LAWYER_RATE = 60
 
 export async function GET(request: NextRequest) {
     try {
@@ -12,59 +15,103 @@ export async function GET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url)
         const year = Number(searchParams.get('year') ?? new Date().getFullYear())
-        const month = searchParams.get('month') ? Number(searchParams.get('month')) : null
+        const lawyerRate = Number(searchParams.get('lawyerRate') ?? DEFAULT_LAWYER_RATE)
 
-        let fromDate: Date
-        let toDate: Date
-
-        if (month !== null) {
-            const date = new Date(year, month - 1, 1)
-            fromDate = startOfMonth(date)
-            toDate = endOfMonth(date)
-        } else {
-            const date = new Date(year, 0, 1)
-            fromDate = startOfYear(date)
-            toDate = endOfYear(date)
-        }
+        const fromDate = startOfYear(new Date(year, 0, 1))
+        const toDate = endOfYear(new Date(year, 11, 31))
 
         // Юр.услуги из сделок (по dealDate)
-        const dealLegalServices = await db.deal.aggregate({
+        const dealLegalServices = await db.deal.findMany({
             where: {
                 legalServices: true,
                 dealDate: { gte: fromDate, lte: toDate }
             },
-            _sum: { legalServicesAmount: true },
-            _count: { id: true }
+            select: {
+                id: true,
+                dealDate: true,
+                legalServicesAmount: true
+            }
         })
 
         // Отдельные юр.услуги (по serviceDate)
-        const standaloneLegalServices = await db.legalService.aggregate({
+        const standaloneLegalServices = await db.legalService.findMany({
             where: {
                 serviceDate: { gte: fromDate, lte: toDate }
             },
-            _sum: { amount: true },
-            _count: { id: true }
+            select: {
+                id: true,
+                serviceDate: true,
+                amount: true
+            }
         })
 
-        const dealCount = dealLegalServices._count.id ?? 0
-        const dealAmount = dealLegalServices._sum.legalServicesAmount ?? 0
-        const standaloneCount = standaloneLegalServices._count.id ?? 0
-        const standaloneAmount = standaloneLegalServices._sum.amount ?? 0
+        // Группируем по месяцам
+        const months: Record<string, { dealsCount: number; dealsAmount: number; standaloneCount: number; standaloneAmount: number }> = {}
+
+        // Инициализируем все месяцы года
+        for (let m = 0; m < 12; m++) {
+            const mk = monthKey(new Date(year, m, 1))
+            months[mk] = { dealsCount: 0, dealsAmount: 0, standaloneCount: 0, standaloneAmount: 0 }
+        }
+
+        // Добавляем сделки
+        for (const deal of dealLegalServices) {
+            if (!deal.dealDate) continue
+            const mk = monthKey(deal.dealDate)
+            if (months[mk]) {
+                months[mk].dealsCount += 1
+                months[mk].dealsAmount += Number(deal.legalServicesAmount ?? 0)
+            }
+        }
+
+        // Добавляем отдельные услуги
+        for (const service of standaloneLegalServices) {
+            const mk = monthKey(service.serviceDate)
+            if (months[mk]) {
+                months[mk].standaloneCount += 1
+                months[mk].standaloneAmount += Number(service.amount ?? 0)
+            }
+        }
+
+        // Формируем результат с ЗП юриста
+        const monthlyData = Object.entries(months)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([mk, data]) => {
+                const totalAmount = data.dealsAmount + data.standaloneAmount
+                const totalCount = data.dealsCount + data.standaloneCount
+                const lawyerSalary = Math.round(totalAmount * lawyerRate / 100)
+                return {
+                    monthKey: mk,
+                    month: formatMonthLabel(mk),
+                    dealsCount: data.dealsCount,
+                    dealsAmount: data.dealsAmount,
+                    standaloneCount: data.standaloneCount,
+                    standaloneAmount: data.standaloneAmount,
+                    totalCount,
+                    totalAmount,
+                    lawyerSalary
+                }
+            })
+
+        // Итоги за год
+        const totals = monthlyData.reduce((acc, m) => ({
+            dealsCount: acc.dealsCount + m.dealsCount,
+            dealsAmount: acc.dealsAmount + m.dealsAmount,
+            standaloneCount: acc.standaloneCount + m.standaloneCount,
+            standaloneAmount: acc.standaloneAmount + m.standaloneAmount,
+            totalCount: acc.totalCount + m.totalCount,
+            totalAmount: acc.totalAmount + m.totalAmount,
+            lawyerSalary: acc.lawyerSalary + m.lawyerSalary
+        }), {
+            dealsCount: 0, dealsAmount: 0, standaloneCount: 0, standaloneAmount: 0,
+            totalCount: 0, totalAmount: 0, lawyerSalary: 0
+        })
 
         return NextResponse.json({
-            period: month ? `${year}-${String(month).padStart(2, '0')}` : String(year),
-            deals: {
-                count: dealCount,
-                amount: dealAmount
-            },
-            standalone: {
-                count: standaloneCount,
-                amount: standaloneAmount
-            },
-            total: {
-                count: dealCount + standaloneCount,
-                amount: dealAmount + standaloneAmount
-            }
+            year,
+            lawyerRate,
+            months: monthlyData,
+            totals
         })
     } catch (error) {
         if ((error as Error).message === 'UNAUTHORIZED') {
