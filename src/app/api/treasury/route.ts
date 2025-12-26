@@ -145,7 +145,7 @@ async function computeForecast(months: number) {
         plannedCloseDate: { gte: from, lte: to },
         status: { in: ['REGISTRATION', 'WAITING_INVOICE', 'WAITING_PAYMENT'] }
       },
-      _sum: { commission: true }
+      _sum: { netProfit: true }
     })
 
     const plannedExpenses = await db.cashFlow.aggregate({
@@ -155,7 +155,7 @@ async function computeForecast(months: number) {
       _sum: { amount: true }
     })
 
-    const expectedIncome = expectedDeals._sum.commission ?? 0
+    const expectedIncome = expectedDeals._sum.netProfit ?? 0
     const plannedExpenseSum = plannedExpenses._sum.amount ?? 0
     const closingBalance = openingBalance + expectedIncome - plannedExpenseSum
 

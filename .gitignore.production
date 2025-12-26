@@ -1,0 +1,13 @@
+# Deployment Files
+.env.production
+*.log
+
+# Backups
+backups/
+
+# SSL Certificates
+nginx/ssl/*.pem
+nginx/ssl/*.key
+
+# Nginx logs
+nginx/logs/

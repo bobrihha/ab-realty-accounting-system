@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertTriangle, CircleHelp, Edit, Plus, RefreshCw, Trash2, TrendingUp, Wallet } from 'lucide-react'
+import { AlertTriangle, CircleHelp, DollarSign, Edit, Plus, RefreshCw, Trash2, TrendingUp, Wallet } from 'lucide-react'
 import { MetricHelp } from '@/components/help/metric-help'
 
 type AccountType = 'BANK' | 'CASH' | 'DIGITAL'
@@ -46,10 +46,17 @@ type MonthlyForecast = {
   status: 'positive' | 'critical'
 }
 
+type TreasuryKPI = {
+  expectedTotal: { value: number; count: number }
+  expectedDeposits: { value: number; count: number }
+  expectedOnPayment: { value: number; count: number }
+}
+
 export function Treasury() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [cashFlow, setCashFlow] = useState<CashFlowItem[]>([])
   const [forecast, setForecast] = useState<MonthlyForecast[]>([])
+  const [treasuryKPI, setTreasuryKPI] = useState<TreasuryKPI | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -104,6 +111,14 @@ export function Treasury() {
     setAccounts(data.accounts ?? [])
     setCashFlow(data.cashFlow ?? [])
     setForecast(data.forecast ?? [])
+
+    // Load treasury KPIs
+    const kpiRes = await fetch('/api/treasury/kpi', { cache: 'no-store' })
+    if (kpiRes.ok) {
+      const kpiData = await kpiRes.json()
+      setTreasuryKPI(kpiData)
+    }
+
     setLoading(false)
   }
 
@@ -447,6 +462,65 @@ export function Treasury() {
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>Обнаружен кассовый разрыв (отрицательный прогноз баланса).</AlertDescription>
         </Alert>
+      )}
+
+      {/* Treasury KPI Cards */}
+      {treasuryKPI && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-blue-800 flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Ожидаю итого
+              </CardTitle>
+              <CardDescription className="text-blue-600">Чистая прибыль по активным сделкам</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-900">
+                {formatCurrency(treasuryKPI.expectedTotal.value)}
+              </div>
+              <p className="text-xs text-blue-600 mt-1">
+                {treasuryKPI.expectedTotal.count} сделок
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-orange-800 flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Ожидаю в задатках
+              </CardTitle>
+              <CardDescription className="text-orange-600">Чистая прибыль в статусе задатка</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-900">
+                {formatCurrency(treasuryKPI.expectedDeposits.value)}
+              </div>
+              <p className="text-xs text-orange-600 mt-1">
+                {treasuryKPI.expectedDeposits.count} сделок
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-green-800 flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Ожидаю на оплате
+              </CardTitle>
+              <CardDescription className="text-green-600">Регистрация, ждём счёт, на оплате</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-900">
+                {formatCurrency(treasuryKPI.expectedOnPayment.value)}
+              </div>
+              <p className="text-xs text-green-600 mt-1">
+                {treasuryKPI.expectedOnPayment.count} сделок
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       <Dialog open={isEditCashFlowDialogOpen} onOpenChange={setIsEditCashFlowDialogOpen}>

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { canViewAllDeals, requireSession } from '@/lib/guards'
-import { endOfMonth, startOfMonth } from '@/lib/money'
 
 export async function GET() {
   try {
@@ -31,11 +30,9 @@ export async function GET() {
       _count: { _all: true }
     })
 
-    const now = new Date()
-    const from = startOfMonth(now)
-    const to = endOfMonth(now)
-    const netProfitMonth = await db.deal.aggregate({
-      where: { ...dealsWhere, status: 'CLOSED', dealDate: { gte: from, lte: to } },
+    // Expected profit from active deals (not CLOSED, not CANCELLED)
+    const expectedProfit = await db.deal.aggregate({
+      where: { status: { notIn: ['CLOSED', 'CANCELLED'] } },
       _sum: { netProfit: true },
       _count: { _all: true }
     })
@@ -52,12 +49,12 @@ export async function GET() {
         expectedTotal: totals._sum.commission ?? 0,
         deposits: deposits._sum.commission ?? 0,
         onPayment: onPayment._sum.commission ?? 0,
-        netProfitMonth: netProfitMonth._sum.netProfit ?? 0,
+        expectedProfit: expectedProfit._sum.netProfit ?? 0,
         counts: {
           expectedTotal: totals._count._all ?? 0,
           deposits: deposits._count._all ?? 0,
           onPayment: onPayment._count._all ?? 0,
-          netProfitMonth: netProfitMonth._count._all ?? 0
+          expectedProfit: expectedProfit._count._all ?? 0
         }
       },
       recentDeals

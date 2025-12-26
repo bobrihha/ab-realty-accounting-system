@@ -22,6 +22,13 @@ function normalizeDealExpenses<T extends { brokerExpense?: number; lawyerExpense
   return { brokerExpense, lawyerExpense, referralExpense, otherExpense, externalExpenses: normalizedExternal }
 }
 
+function parseOptionalNumber(value: unknown) {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await requireSession()
@@ -91,21 +98,32 @@ export async function POST(request: NextRequest) {
     const depositDate = data.depositDate ? new Date(data.depositDate) : new Date()
     const ropId = (data.ropId as string | undefined) ?? agent.managerId ?? null
 
-    const agentRate =
+    const agentRateDefault =
       (await getRateForEmployeeAtDate(agentId, 'AGENT', depositDate)) ??
       agent.baseRateAgent ??
       0
 
-    let ropRate = 0
+    let ropRateDefault = 0
     if (ropId) {
       const rop = await db.employee.findUnique({ where: { id: ropId } })
       if (rop) {
-        ropRate =
+        ropRateDefault =
           (await getRateForEmployeeAtDate(ropId, 'ROP', depositDate)) ??
           rop.baseRateROP ??
           0
       }
     }
+
+    const agentRateInput = parseOptionalNumber((data as any).agentRateApplied)
+    const ropRateInput = parseOptionalNumber((data as any).ropRateApplied)
+    const agentRate = agentRateInput === undefined || agentRateInput === null ? agentRateDefault : agentRateInput
+    // Use the input ropRate if provided, otherwise fall back to default (which requires ropId)
+    const ropRate =
+      ropRateInput !== undefined && ropRateInput !== null
+        ? ropRateInput
+        : ropId
+          ? ropRateDefault
+          : 0
 
     const grossCommission = Number(data.commission ?? 0)
     const taxRate = Number(data.taxRate ?? 6)
@@ -119,11 +137,17 @@ export async function POST(request: NextRequest) {
     })
     const externalExpenses = expenses.externalExpenses
     const commissionsManual = Boolean(data.commissionsManual)
+    const legalServices = Boolean(data.legalServices)
+    const legalServicesAmountInput = parseOptionalNumber((data as any).legalServicesAmount)
+    const legalServicesAmount = legalServices ? (legalServicesAmountInput ?? 0) : 0
 
     const waterfall = computeWaterfall({
       grossCommission,
       taxRatePercent: taxRate,
-      externalExpenses,
+      referralExpense: expenses.referralExpense,
+      brokerExpense: expenses.brokerExpense,
+      lawyerExpense: expenses.lawyerExpense,
+      otherExpense: expenses.otherExpense,
       agentRatePercent: agentRate,
       ropRatePercent: ropRate
     })
@@ -141,7 +165,8 @@ export async function POST(request: NextRequest) {
         dealDate: data.dealDate ? new Date(data.dealDate) : null,
         plannedCloseDate: data.plannedCloseDate ? new Date(data.plannedCloseDate) : null,
         contractType: data.contractType ?? 'EXCLUSIVE',
-        legalServices: Boolean(data.legalServices),
+        legalServices,
+        legalServicesAmount,
         notes: data.notes ? String(data.notes) : null,
         taxRate,
         brokerExpense: expenses.brokerExpense,

@@ -14,7 +14,9 @@ function SignInForm() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const search = useSearchParams()
-  const callbackUrl = search.get('callbackUrl') ?? '/'
+  const rawCallback = search.get('callbackUrl') ?? '/'
+  // Sanitize callbackUrl - only allow valid paths starting with /
+  const callbackUrl = rawCallback.startsWith('/') && !rawCallback.includes('**') ? rawCallback : '/'
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()

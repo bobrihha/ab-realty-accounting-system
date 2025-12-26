@@ -30,6 +30,7 @@ type Deal = {
   plannedCloseDate: string | null
   contractType: ContractType
   legalServices: boolean
+  legalServicesAmount: number
   notes: string | null
   taxRate: number
   brokerExpense: number
@@ -40,6 +41,8 @@ type Deal = {
   ropCommission: number | null
   agentCommission: number | null
   netProfit: number | null
+  ropRateApplied: number | null
+  agentRateApplied: number | null
   commissionsManual: boolean
   agent: Employee
   rop: Employee | null
@@ -72,6 +75,8 @@ export function DealsRegistry() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [agentFilter, setAgentFilter] = useState<string>('all')
+  const [legalServicesFilter, setLegalServicesFilter] = useState<string>('all')
+  const [contractTypeFilter, setContractTypeFilter] = useState<string>('all')
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
@@ -90,13 +95,16 @@ export function DealsRegistry() {
     plannedCloseDate: '',
     contractType: 'EXCLUSIVE' as ContractType,
     legalServices: false,
+    legalServicesAmount: '',
     notes: '',
     taxRate: '6',
     brokerExpense: '0',
     lawyerExpense: '0',
     referralExpense: '0',
     otherExpense: '0',
-    commissionsManual: false
+    commissionsManual: false,
+    agentRateApplied: '',
+    ropRateApplied: ''
   })
 
   const load = async () => {
@@ -130,9 +138,14 @@ export function DealsRegistry() {
         deal.agent.name.toLowerCase().includes(s)
       const matchesStatus = statusFilter === 'all' || deal.status === statusFilter
       const matchesAgent = agentFilter === 'all' || deal.agent.id === agentFilter
-      return matchesSearch && matchesStatus && matchesAgent
+      const matchesLegalServices =
+        legalServicesFilter === 'all' ||
+        (legalServicesFilter === 'yes' && deal.legalServices) ||
+        (legalServicesFilter === 'no' && !deal.legalServices)
+      const matchesContractType = contractTypeFilter === 'all' || deal.contractType === contractTypeFilter
+      return matchesSearch && matchesStatus && matchesAgent && matchesLegalServices && matchesContractType
     })
-  }, [agentFilter, deals, searchTerm, statusFilter])
+  }, [agentFilter, contractTypeFilter, deals, legalServicesFilter, searchTerm, statusFilter])
 
   const resetForm = () => {
     setFormData({
@@ -147,13 +160,16 @@ export function DealsRegistry() {
       plannedCloseDate: '',
       contractType: 'EXCLUSIVE',
       legalServices: false,
+      legalServicesAmount: '',
       notes: '',
       taxRate: '6',
       brokerExpense: '0',
       lawyerExpense: '0',
       referralExpense: '0',
       otherExpense: '0',
-      commissionsManual: false
+      commissionsManual: false,
+      agentRateApplied: '',
+      ropRateApplied: ''
     })
   }
 
@@ -175,13 +191,16 @@ export function DealsRegistry() {
       plannedCloseDate: formData.plannedCloseDate || undefined,
       contractType: formData.contractType,
       legalServices: formData.legalServices,
+      legalServicesAmount: formData.legalServices ? parseFloat(formData.legalServicesAmount) || 0 : 0,
       notes: formData.notes || undefined,
       taxRate: parseFloat(formData.taxRate) || 6,
       brokerExpense: parseFloat(formData.brokerExpense) || 0,
       lawyerExpense: parseFloat(formData.lawyerExpense) || 0,
       referralExpense: parseFloat(formData.referralExpense) || 0,
       otherExpense: parseFloat(formData.otherExpense) || 0,
-      commissionsManual: formData.commissionsManual
+      commissionsManual: formData.commissionsManual,
+      agentRateApplied: formData.agentRateApplied.trim() === '' ? undefined : parseFloat(formData.agentRateApplied),
+      ropRateApplied: formData.ropRateApplied.trim() === '' ? undefined : parseFloat(formData.ropRateApplied)
     }
 
     const res = await fetch('/api/deals', {
@@ -205,12 +224,14 @@ export function DealsRegistry() {
         object: editingDeal.object,
         price: editingDeal.price,
         commission: editingDeal.commission,
+        agentId: editingDeal.agent.id,
         status: editingDeal.status,
         depositDate: editingDeal.depositDate,
         dealDate: editingDeal.dealDate,
         plannedCloseDate: editingDeal.plannedCloseDate,
         contractType: editingDeal.contractType,
         legalServices: editingDeal.legalServices,
+        legalServicesAmount: editingDeal.legalServices ? editingDeal.legalServicesAmount : 0,
         notes: editingDeal.notes,
         taxRate: editingDeal.taxRate,
         brokerExpense: editingDeal.brokerExpense,
@@ -218,6 +239,8 @@ export function DealsRegistry() {
         referralExpense: editingDeal.referralExpense,
         otherExpense: editingDeal.otherExpense,
         commissionsManual: editingDeal.commissionsManual,
+        agentRateApplied: editingDeal.agentRateApplied,
+        ropRateApplied: editingDeal.ropRateApplied,
         ropCommission: editingDeal.ropCommission,
         agentCommission: editingDeal.agentCommission,
         netProfit: editingDeal.netProfit
@@ -291,6 +314,26 @@ export function DealsRegistry() {
                       type="number"
                       value={formData.commission}
                       onChange={e => setFormData(p => ({ ...p, commission: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="agentRateApplied">Ставка агента (%)</Label>
+                    <Input
+                      id="agentRateApplied"
+                      type="number"
+                      value={formData.agentRateApplied}
+                      onChange={e => setFormData(p => ({ ...p, agentRateApplied: e.target.value }))}
+                      placeholder="по умолчанию"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="ropRateApplied">Ставка РОПа (%)</Label>
+                    <Input
+                      id="ropRateApplied"
+                      type="number"
+                      value={formData.ropRateApplied}
+                      onChange={e => setFormData(p => ({ ...p, ropRateApplied: e.target.value }))}
+                      placeholder="по умолчанию"
                     />
                   </div>
                   <div>
@@ -369,10 +412,28 @@ export function DealsRegistry() {
                     <Checkbox
                       id="legalServices"
                       checked={formData.legalServices}
-                      onCheckedChange={checked => setFormData(p => ({ ...p, legalServices: Boolean(checked) }))}
+                      onCheckedChange={checked =>
+                        setFormData(p => ({
+                          ...p,
+                          legalServices: Boolean(checked),
+                          legalServicesAmount: checked ? p.legalServicesAmount : ''
+                        }))
+                      }
                     />
                     <Label htmlFor="legalServices">Юридические услуги</Label>
                   </div>
+                  {formData.legalServices && (
+                    <div>
+                      <Label htmlFor="legalServicesAmount">Стоимость юр. услуг (₽)</Label>
+                      <Input
+                        id="legalServicesAmount"
+                        type="number"
+                        value={formData.legalServicesAmount}
+                        onChange={e => setFormData(p => ({ ...p, legalServicesAmount: e.target.value }))}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="taxRate">Налог (%)</Label>
                     <Input
@@ -491,6 +552,27 @@ export function DealsRegistry() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={legalServicesFilter} onValueChange={setLegalServicesFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Юр. услуги" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Юр. услуги: все</SelectItem>
+                <SelectItem value="yes">С юр. услугами</SelectItem>
+                <SelectItem value="no">Без юр. услуг</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={contractTypeFilter} onValueChange={setContractTypeFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Тип договора" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все типы</SelectItem>
+                {Object.entries(contractTypeLabels).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -507,13 +589,14 @@ export function DealsRegistry() {
                   <TableHead>Статус</TableHead>
                   <TableHead>Дата брони</TableHead>
                   <TableHead className="text-right">Комиссия</TableHead>
+                  <TableHead className="text-right">Чистая прибыль</TableHead>
                   <TableHead>Действия</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredDeals.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                       Сделки не найдены
                     </TableCell>
                   </TableRow>
@@ -530,6 +613,9 @@ export function DealsRegistry() {
                       </TableCell>
                       <TableCell>{formatDate(deal.depositDate)}</TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(deal.commission)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {deal.netProfit != null ? formatCurrency(deal.netProfit) : '-'}
+                      </TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
                           <Button variant="ghost" size="sm" onClick={() => (setSelectedDeal(deal), setIsViewDialogOpen(true))}>
@@ -612,8 +698,22 @@ export function DealsRegistry() {
                       </p>
                     </div>
                     <div>
+                      <Label className="text-sm font-medium text-gray-500">Юридические услуги</Label>
+                      <p className="font-medium">
+                        {selectedDeal.legalServices ? formatCurrency(selectedDeal.legalServicesAmount ?? 0) : '-'}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Ставка агента (%)</Label>
+                      <p className="font-medium">{selectedDeal.agentRateApplied != null ? `${selectedDeal.agentRateApplied}%` : '-'}</p>
+                    </div>
+                    <div>
                       <Label className="text-sm font-medium text-gray-500">Налог (%)</Label>
                       <p className="font-medium">{selectedDeal.taxRate}%</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Ставка РОПа (%)</Label>
+                      <p className="font-medium">{selectedDeal.ropRateApplied != null ? `${selectedDeal.ropRateApplied}%` : '-'}</p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-gray-500">Расходы (итого)</Label>
@@ -661,184 +761,261 @@ export function DealsRegistry() {
             </DialogHeader>
             {editingDeal && (
               <div className="grid grid-cols-2 gap-4 py-4">
-              <div className="col-span-2">
-                <Label>Клиент</Label>
-                <Input value={editingDeal.client} onChange={e => setEditingDeal(d => (d ? { ...d, client: e.target.value } : d))} />
-              </div>
-              <div className="col-span-2">
-                <Label>Объект</Label>
-                <Input value={editingDeal.object} onChange={e => setEditingDeal(d => (d ? { ...d, object: e.target.value } : d))} />
-              </div>
-              <div>
-                <Label>Цена</Label>
-                <Input
-                  type="number"
-                  value={editingDeal.price}
-                  onChange={e => setEditingDeal(d => (d ? { ...d, price: parseFloat(e.target.value) || 0 } : d))}
-                />
-              </div>
-              <div>
-                <Label>Комиссия (вал)</Label>
-                <Input
-                  type="number"
-                  value={editingDeal.commission}
-                  onChange={e => setEditingDeal(d => (d ? { ...d, commission: parseFloat(e.target.value) || 0 } : d))}
-                />
-              </div>
-              <div>
-                <Label>Статус</Label>
-                <Select value={editingDeal.status} onValueChange={value => setEditingDeal(d => (d ? { ...d, status: value as DealStatus } : d))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(statusConfig).map(([key, v]) => (
-                      <SelectItem key={key} value={key}>
-                        {v.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Дата брони</Label>
-                <Input
-                  type="date"
-                  value={editingDeal.depositDate.split('T')[0]}
-                  onChange={e => setEditingDeal(d => (d ? { ...d, depositDate: e.target.value } : d))}
-                />
-              </div>
-              <div>
-                <Label>Дата сделки</Label>
-                <Input
-                  type="date"
-                  value={editingDeal.dealDate ? editingDeal.dealDate.split('T')[0] : ''}
-                  onChange={e => setEditingDeal(d => (d ? { ...d, dealDate: e.target.value || null } : d))}
-                />
-              </div>
-              <div>
-                <Label>Планируемая дата закрытия</Label>
-                <Input
-                  type="date"
-                  value={editingDeal.plannedCloseDate ? editingDeal.plannedCloseDate.split('T')[0] : ''}
-                  onChange={e => setEditingDeal(d => (d ? { ...d, plannedCloseDate: e.target.value || null } : d))}
-                />
-              </div>
-              <div>
-                <Label>Тип договора</Label>
-                <Select
-                  value={editingDeal.contractType}
-                  onValueChange={value => setEditingDeal(d => (d ? { ...d, contractType: value as ContractType } : d))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(contractTypeLabels).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="edit-legalServices"
-                  checked={editingDeal.legalServices}
-                  onCheckedChange={checked => setEditingDeal(d => (d ? { ...d, legalServices: Boolean(checked) } : d))}
-                />
-                <Label htmlFor="edit-legalServices">Юридические услуги</Label>
-              </div>
-              <div>
-                <Label>Налог (%)</Label>
-                <Input
-                  type="number"
-                  value={editingDeal.taxRate}
-                  onChange={e => setEditingDeal(d => (d ? { ...d, taxRate: parseFloat(e.target.value) || 0 } : d))}
-                />
-              </div>
-              <div className="col-span-2">
-                <Label>Расходы по сделке</Label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <Label>Клиент</Label>
+                  <Input value={editingDeal.client} onChange={e => setEditingDeal(d => (d ? { ...d, client: e.target.value } : d))} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Объект</Label>
+                  <Input value={editingDeal.object} onChange={e => setEditingDeal(d => (d ? { ...d, object: e.target.value } : d))} />
+                </div>
+                <div>
+                  <Label>Цена</Label>
+                  <Input
+                    type="number"
+                    value={editingDeal.price}
+                    onChange={e => setEditingDeal(d => (d ? { ...d, price: parseFloat(e.target.value) || 0 } : d))}
+                  />
+                </div>
+                <div>
+                  <Label>Комиссия (вал)</Label>
+                  <Input
+                    type="number"
+                    value={editingDeal.commission}
+                    onChange={e => setEditingDeal(d => (d ? { ...d, commission: parseFloat(e.target.value) || 0 } : d))}
+                  />
+                </div>
+                <div>
+                  <Label>Агент</Label>
+                  <Select
+                    value={editingDeal.agent.id}
+                    onValueChange={value => {
+                      const selectedAgent = employees.find(e => e.id === value)
+                      if (selectedAgent) {
+                        setEditingDeal(d => (d ? { ...d, agent: selectedAgent } : d))
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map(e => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Ставка агента (%)</Label>
+                  <Input
+                    type="number"
+                    value={editingDeal.agentRateApplied ?? ''}
+                    onChange={e =>
+                      setEditingDeal(d =>
+                        d
+                          ? { ...d, agentRateApplied: e.target.value === '' ? null : parseFloat(e.target.value) || 0 }
+                          : d
+                      )
+                    }
+                    placeholder="по умолчанию"
+                  />
+                </div>
+                <div>
+                  <Label>Статус</Label>
+                  <Select value={editingDeal.status} onValueChange={value => setEditingDeal(d => (d ? { ...d, status: value as DealStatus } : d))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(statusConfig).map(([key, v]) => (
+                        <SelectItem key={key} value={key}>
+                          {v.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Дата брони</Label>
+                  <Input
+                    type="date"
+                    value={editingDeal.depositDate.split('T')[0]}
+                    onChange={e => setEditingDeal(d => (d ? { ...d, depositDate: e.target.value } : d))}
+                  />
+                </div>
+                <div>
+                  <Label>Дата сделки</Label>
+                  <Input
+                    type="date"
+                    value={editingDeal.dealDate ? editingDeal.dealDate.split('T')[0] : ''}
+                    onChange={e => setEditingDeal(d => (d ? { ...d, dealDate: e.target.value || null } : d))}
+                  />
+                </div>
+                <div>
+                  <Label>Планируемая дата закрытия</Label>
+                  <Input
+                    type="date"
+                    value={editingDeal.plannedCloseDate ? editingDeal.plannedCloseDate.split('T')[0] : ''}
+                    onChange={e => setEditingDeal(d => (d ? { ...d, plannedCloseDate: e.target.value || null } : d))}
+                  />
+                </div>
+                <div>
+                  <Label>Тип договора</Label>
+                  <Select
+                    value={editingDeal.contractType}
+                    onValueChange={value => setEditingDeal(d => (d ? { ...d, contractType: value as ContractType } : d))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(contractTypeLabels).map(([key, label]) => (
+                        <SelectItem key={key} value={key}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="edit-legalServices"
+                    checked={editingDeal.legalServices}
+                    onCheckedChange={checked =>
+                      setEditingDeal(d =>
+                        d
+                          ? {
+                            ...d,
+                            legalServices: Boolean(checked),
+                            legalServicesAmount: checked ? d.legalServicesAmount : 0
+                          }
+                          : d
+                      )
+                    }
+                  />
+                  <Label htmlFor="edit-legalServices">Юридические услуги</Label>
+                </div>
+                {editingDeal.legalServices && (
                   <div>
-                    <Label className="text-xs text-gray-500">Брокер / ипотека</Label>
+                    <Label>Стоимость юр. услуг (₽)</Label>
                     <Input
                       type="number"
-                      value={editingDeal.brokerExpense}
-                      onChange={e => setEditingDeal(d => (d ? { ...d, brokerExpense: parseFloat(e.target.value) || 0 } : d))}
+                      value={editingDeal.legalServicesAmount}
+                      onChange={e =>
+                        setEditingDeal(d =>
+                          d ? { ...d, legalServicesAmount: parseFloat(e.target.value) || 0 } : d
+                        )
+                      }
                     />
                   </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Юрист</Label>
-                    <Input
-                      type="number"
-                      value={editingDeal.lawyerExpense}
-                      onChange={e => setEditingDeal(d => (d ? { ...d, lawyerExpense: parseFloat(e.target.value) || 0 } : d))}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Рекомендация</Label>
-                    <Input
-                      type="number"
-                      value={editingDeal.referralExpense}
-                      onChange={e => setEditingDeal(d => (d ? { ...d, referralExpense: parseFloat(e.target.value) || 0 } : d))}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Прочее</Label>
-                    <Input
-                      type="number"
-                      value={editingDeal.otherExpense}
-                      onChange={e => setEditingDeal(d => (d ? { ...d, otherExpense: parseFloat(e.target.value) || 0 } : d))}
-                    />
+                )}
+                <div>
+                  <Label>Налог (%)</Label>
+                  <Input
+                    type="number"
+                    value={editingDeal.taxRate}
+                    onChange={e => setEditingDeal(d => (d ? { ...d, taxRate: parseFloat(e.target.value) || 0 } : d))}
+                  />
+                </div>
+                <div>
+                  <Label>Ставка РОПа (%)</Label>
+                  <Input
+                    type="number"
+                    value={editingDeal.ropRateApplied ?? ''}
+                    onChange={e =>
+                      setEditingDeal(d =>
+                        d
+                          ? { ...d, ropRateApplied: e.target.value === '' ? null : parseFloat(e.target.value) || 0 }
+                          : d
+                      )
+                    }
+                    placeholder="по умолчанию"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>Расходы по сделке</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-gray-500">Брокер / ипотека</Label>
+                      <Input
+                        type="number"
+                        value={editingDeal.brokerExpense}
+                        onChange={e => setEditingDeal(d => (d ? { ...d, brokerExpense: parseFloat(e.target.value) || 0 } : d))}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500">Юрист</Label>
+                      <Input
+                        type="number"
+                        value={editingDeal.lawyerExpense}
+                        onChange={e => setEditingDeal(d => (d ? { ...d, lawyerExpense: parseFloat(e.target.value) || 0 } : d))}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500">Рекомендация</Label>
+                      <Input
+                        type="number"
+                        value={editingDeal.referralExpense}
+                        onChange={e => setEditingDeal(d => (d ? { ...d, referralExpense: parseFloat(e.target.value) || 0 } : d))}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500">Прочее</Label>
+                      <Input
+                        type="number"
+                        value={editingDeal.otherExpense}
+                        onChange={e => setEditingDeal(d => (d ? { ...d, otherExpense: parseFloat(e.target.value) || 0 } : d))}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="col-span-2 flex items-center space-x-2">
-                <Checkbox
-                  id="commissionsManual"
-                  checked={editingDeal.commissionsManual}
-                  onCheckedChange={checked => setEditingDeal(d => (d ? { ...d, commissionsManual: Boolean(checked) } : d))}
-                />
-                <Label htmlFor="commissionsManual">Ручной режим комиссий</Label>
-              </div>
-              {editingDeal.commissionsManual && (
-                <>
-                  <div>
-                    <Label>Комиссия агента</Label>
-                    <Input
-                      type="number"
-                      value={editingDeal.agentCommission ?? 0}
-                      onChange={e =>
-                        setEditingDeal(d => (d ? { ...d, agentCommission: parseFloat(e.target.value) || 0 } : d))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <Label>Комиссия РОПа</Label>
-                    <Input
-                      type="number"
-                      value={editingDeal.ropCommission ?? 0}
-                      onChange={e =>
-                        setEditingDeal(d => (d ? { ...d, ropCommission: parseFloat(e.target.value) || 0 } : d))
-                      }
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Label>Чистая прибыль</Label>
-                    <Input
-                      type="number"
-                      value={editingDeal.netProfit ?? 0}
-                      onChange={e => setEditingDeal(d => (d ? { ...d, netProfit: parseFloat(e.target.value) || 0 } : d))}
-                    />
-                  </div>
-                </>
-              )}
-              <div className="col-span-2">
-                <Label>Примечания</Label>
-                <Textarea value={editingDeal.notes ?? ''} onChange={e => setEditingDeal(d => (d ? { ...d, notes: e.target.value } : d))} rows={3} />
-              </div>
+                <div className="col-span-2 flex items-center space-x-2">
+                  <Checkbox
+                    id="commissionsManual"
+                    checked={editingDeal.commissionsManual}
+                    onCheckedChange={checked => setEditingDeal(d => (d ? { ...d, commissionsManual: Boolean(checked) } : d))}
+                  />
+                  <Label htmlFor="commissionsManual">Ручной режим комиссий</Label>
+                </div>
+                {editingDeal.commissionsManual && (
+                  <>
+                    <div>
+                      <Label>Комиссия агента</Label>
+                      <Input
+                        type="number"
+                        value={editingDeal.agentCommission ?? 0}
+                        onChange={e =>
+                          setEditingDeal(d => (d ? { ...d, agentCommission: parseFloat(e.target.value) || 0 } : d))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>Комиссия РОПа</Label>
+                      <Input
+                        type="number"
+                        value={editingDeal.ropCommission ?? 0}
+                        onChange={e =>
+                          setEditingDeal(d => (d ? { ...d, ropCommission: parseFloat(e.target.value) || 0 } : d))
+                        }
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Label>Чистая прибыль</Label>
+                      <Input
+                        type="number"
+                        value={editingDeal.netProfit ?? 0}
+                        onChange={e => setEditingDeal(d => (d ? { ...d, netProfit: parseFloat(e.target.value) || 0 } : d))}
+                      />
+                    </div>
+                  </>
+                )}
+                <div className="col-span-2">
+                  <Label>Примечания</Label>
+                  <Textarea value={editingDeal.notes ?? ''} onChange={e => setEditingDeal(d => (d ? { ...d, notes: e.target.value } : d))} rows={3} />
+                </div>
                 <div className="col-span-2 flex justify-end space-x-2">
                   <Button variant="outline" onClick={() => setEditingDeal(null)}>
                     Отмена

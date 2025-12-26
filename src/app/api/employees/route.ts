@@ -47,12 +47,25 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await request.json()
+
+    // Validate email
+    const email = String(data.email ?? '').trim().toLowerCase()
+    if (!email) {
+      return NextResponse.json({ error: 'Email обязателен для заполнения' }, { status: 400 })
+    }
+
+    // Check if email already exists
+    const existingEmployee = await db.employee.findUnique({ where: { email } })
+    if (existingEmployee) {
+      return NextResponse.json({ error: 'Сотрудник с таким email уже существует' }, { status: 400 })
+    }
+
     const passwordHash = data.password ? await hash(String(data.password), 10) : null
 
     const employee = await db.employee.create({
       data: {
         name: String(data.name ?? ''),
-        email: String(data.email ?? '').trim().toLowerCase(),
+        email,
         phone: String(data.phone ?? ''),
         role: String(data.role ?? 'AGENT').toUpperCase(),
         status: String(data.status ?? 'ACTIVE').toUpperCase(),

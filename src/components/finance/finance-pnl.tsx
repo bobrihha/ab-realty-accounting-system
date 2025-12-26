@@ -61,6 +61,18 @@ type FinanceMetricsMonthEmployee = {
   margin: number
 }
 
+type LegalServicesMonth = {
+  month: string
+  monthKey: string
+  dealsCount: number
+  amount: number
+}
+
+type LegalServicesMetrics = {
+  months: LegalServicesMonth[]
+  totals: { dealsCount: number; amount: number }
+}
+
 type FinanceMetrics = {
   year: number
   months: FinanceMetricsMonth[]
@@ -77,6 +89,7 @@ type FinanceMetrics = {
   byRop: FinanceMetricsRow[]
   byAgentMonthly: { employeeId: string; name: string; months: FinanceMetricsMonthEmployee[] }[]
   byRopMonthly: { employeeId: string; name: string; months: FinanceMetricsMonthEmployee[] }[]
+  legalServices: LegalServicesMetrics
 }
 
 const expenseCategories = [
@@ -97,6 +110,7 @@ export function FinancePNL() {
   const [loading, setLoading] = useState(true)
   const [agentMonthlyId, setAgentMonthlyId] = useState<string>('')
   const [ropMonthlyId, setRopMonthlyId] = useState<string>('')
+  const [legalMonthFilter, setLegalMonthFilter] = useState<string>('all')
 
   useEffect(() => {
     const loadFinancialData = async () => {
@@ -119,6 +133,10 @@ export function FinancePNL() {
       console.error(err)
       setLoading(false)
     })
+  }, [selectedYear])
+
+  useEffect(() => {
+    setLegalMonthFilter('all')
   }, [selectedYear])
 
   const formatCurrency = (amount: number) => {
@@ -195,6 +213,17 @@ export function FinancePNL() {
       }
     ]
 
+    if (metrics.legalServices) {
+      sheets.push({
+        name: 'Юр. услуги',
+        data: metrics.legalServices.months.map(m => ({
+          'Месяц': m.month,
+          'Сделок': m.dealsCount,
+          'Сумма': m.amount
+        }))
+      })
+    }
+
     exportToExcel(`finance_report_${selectedYear}`, sheets)
   }
 
@@ -210,6 +239,12 @@ export function FinancePNL() {
   const metricsTotals = metrics?.totals
   const agentMonthly = metrics?.byAgentMonthly?.find(a => a.employeeId === agentMonthlyId) ?? null
   const ropMonthly = metrics?.byRopMonthly?.find(r => r.employeeId === ropMonthlyId) ?? null
+  const legalMonths = metrics?.legalServices?.months ?? []
+  const legalTotals = metrics?.legalServices?.totals
+  const legalFilteredMonths =
+    legalMonthFilter === 'all' ? legalMonths : legalMonths.filter(m => m.monthKey === legalMonthFilter)
+  const legalSummary =
+    legalMonthFilter === 'all' ? legalTotals : legalMonths.find(m => m.monthKey === legalMonthFilter)
 
 
   if (loading) {
@@ -294,11 +329,11 @@ export function FinancePNL() {
                     title="Выручка по сделкам"
                     description="Как считается показатель"
                     trigger={<DollarSign className="h-6 w-6 text-blue-600" />}
-                    summary="Сколько комиссионных заработали по закрытым сделкам (по дате закрытия сделки)."
+                    summary="Сколько комиссионных заработали по сделкам с датой сделки."
                     details={
                       <div className="space-y-2">
                         <div className="font-medium">Как считается</div>
-                        <div className="text-muted-foreground">Берем закрытые сделки в выбранном году.</div>
+                        <div className="text-muted-foreground">Берем сделки с датой сделки в выбранном году.</div>
                         <div className="text-muted-foreground">Складываем комиссию агентства и относим к месяцу по дате сделки.</div>
                       </div>
                     }
@@ -306,7 +341,7 @@ export function FinancePNL() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(metricsTotals?.dealRevenue ?? 0)}</div>
-                  <p className="text-xs text-gray-500 mt-2">Закрытые (по дате сделки)</p>
+                  <p className="text-xs text-gray-500 mt-2">По дате сделки</p>
                 </CardContent>
               </Card>
 
@@ -317,13 +352,13 @@ export function FinancePNL() {
                     title="Чистая прибыль (сделки)"
                     description="Как считается показатель"
                     trigger={<Target className="h-6 w-6 text-green-600" />}
-                    summary="Сколько прибыли принесли закрытые сделки (после налогов, выплат и расходов по сделке)."
+                    summary="Сколько прибыли принесли сделки с датой сделки (после налогов, выплат и расходов по сделке)."
                     details={
                       <div className="space-y-2">
                         <div className="font-medium">Как считается</div>
-                        <div className="text-muted-foreground">Берем закрытые сделки в выбранном году.</div>
+                        <div className="text-muted-foreground">Берем сделки с датой сделки в выбранном году.</div>
                         <div className="text-muted-foreground">
-                          Для каждой сделки прибыль = комиссия агентства − налоги − внешние расходы по сделке − выплаты (агенту и РОПу).
+                          Для каждой сделки прибыль = комиссия агентства − налог (со всей суммы) − рекомендация − выплаты (агенту/РОПу от комиссии минус рекомендация) − юрист − прочие расходы.
                         </div>
                         <div className="text-muted-foreground">Складываем прибыль всех таких сделок по месяцам (по дате сделки).</div>
                       </div>
@@ -332,7 +367,7 @@ export function FinancePNL() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(metricsTotals?.netProfit ?? 0)}</div>
-                  <p className="text-xs text-gray-500 mt-2">По закрытым сделкам</p>
+                  <p className="text-xs text-gray-500 mt-2">По сделкам с датой сделки</p>
                 </CardContent>
               </Card>
 
@@ -343,11 +378,11 @@ export function FinancePNL() {
                     title="Рентабельность (сделки)"
                     description="Как считается показатель"
                     trigger={<PieChart className="h-6 w-6 text-purple-600" />}
-                    summary="Показывает долю прибыли в выручке по закрытым сделкам."
+                    summary="Показывает долю прибыли в выручке по сделкам с датой сделки."
                     details={
                       <div className="space-y-2">
                         <div className="font-medium">Как считается</div>
-                        <div className="text-muted-foreground">Рентабельность = (прибыль по закрытым сделкам × 100%) / выручка по закрытым сделкам.</div>
+                        <div className="text-muted-foreground">Рентабельность = (прибыль по сделкам с датой сделки × 100%) / выручка по сделкам с датой сделки.</div>
                         <div className="text-muted-foreground">Если выручка равна нулю — рентабельность будет 0%.</div>
                       </div>
                     }
@@ -411,11 +446,73 @@ export function FinancePNL() {
               </CardContent>
             </Card>
 
+            <Card>
+              <CardHeader className="space-y-2">
+                <div>
+                  <CardTitle>Юридические услуги</CardTitle>
+                  <CardDescription>Отдельный доход по юр. сопровождению (не включается в прибыль)</CardDescription>
+                </div>
+                <Select value={legalMonthFilter} onValueChange={setLegalMonthFilter}>
+                  <SelectTrigger className="w-[240px]">
+                    <SelectValue placeholder="Месяц" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все месяцы</SelectItem>
+                    {legalMonths.map(m => (
+                      <SelectItem key={m.monthKey} value={m.monthKey}>
+                        {m.month}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div className="p-4 border rounded-lg">
+                    <div className="text-sm text-gray-500">Сделок с юр. сопровождением</div>
+                    <div className="text-2xl font-bold">{legalSummary?.dealsCount ?? 0}</div>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <div className="text-sm text-gray-500">Сумма юр. услуг</div>
+                    <div className="text-2xl font-bold">{formatCurrency(legalSummary?.amount ?? 0)}</div>
+                  </div>
+                </div>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Месяц</TableHead>
+                        <TableHead className="text-right">Сделок</TableHead>
+                        <TableHead className="text-right">Сумма</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {legalFilteredMonths.length ? (
+                        legalFilteredMonths.map(m => (
+                          <TableRow key={m.monthKey}>
+                            <TableCell className="font-medium">{m.month}</TableCell>
+                            <TableCell className="text-right">{m.dealsCount}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(m.amount)}</TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center py-8 text-gray-500">
+                            Нет данных
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
                   <CardTitle>По агентам (год)</CardTitle>
-                  <CardDescription>Выручка и комиссия агента по закрытым сделкам</CardDescription>
+                  <CardDescription>Выручка и комиссия агента по сделкам с датой сделки</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="rounded-md border">
@@ -456,7 +553,7 @@ export function FinancePNL() {
               <Card>
                 <CardHeader>
                   <CardTitle>По РОПам (год)</CardTitle>
-                  <CardDescription>Выручка и комиссия РОПа по закрытым сделкам</CardDescription>
+                  <CardDescription>Выручка и комиссия РОПа по сделкам с датой сделки</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="rounded-md border">

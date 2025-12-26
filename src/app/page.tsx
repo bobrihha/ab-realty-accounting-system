@@ -14,8 +14,9 @@ import { Payroll } from '@/components/payroll/payroll'
 import { signOut } from 'next-auth/react'
 import { useSession } from 'next-auth/react'
 import { Badge } from '@/components/ui/badge'
-import { DollarSign, FileText, TrendingUp, TrendingDown } from 'lucide-react'
+import { DollarSign, FileText, TrendingUp, TrendingDown, Calendar, Users, Clock, Filter } from 'lucide-react'
 import { MetricHelp } from '@/components/help/metric-help'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface KPICard {
   title: string
@@ -35,6 +36,23 @@ export default function Dashboard() {
   const router = useRouter()
   const role = ((session as any)?.role as string | undefined) ?? 'AGENT'
   const accountName = session?.user?.name ?? session?.user?.email ?? 'Пользователь'
+
+  // Extended KPI state
+  type Employee = { id: string; name: string }
+  type ExtendedKPI = {
+    revenueByDeposit: { value: number; count: number }
+    revenueByDeal: { value: number; count: number }
+    depositsRevenue: { value: number; count: number }
+    pendingRevenue: { value: number; count: number }
+  }
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [extendedKPI, setExtendedKPI] = useState<ExtendedKPI | null>(null)
+  const [extFilter, setExtFilter] = useState({
+    agentId: 'all',
+    year: new Date().getFullYear().toString(),
+    month: 'none',
+    quarter: 'none'
+  })
 
   const roleLabel = (r: string) => {
     switch (r) {
@@ -91,10 +109,10 @@ export default function Dashboard() {
           color: 'text-green-600'
         },
         {
-          title: 'Чистая прибыль мес.',
-          value: fmt(data.kpis.netProfitMonth ?? 0),
+          title: 'Ожидаемая прибыль',
+          value: fmt(data.kpis.expectedProfit ?? 0),
           icon: <TrendingDown className="h-6 w-6" />,
-          description: `За текущий месяц · ${data?.kpis?.counts?.netProfitMonth ?? 0} сделок`,
+          description: `Активные сделки · ${data?.kpis?.counts?.expectedProfit ?? 0} сделок`,
           color: 'text-purple-600'
         }
       ]
@@ -114,6 +132,34 @@ export default function Dashboard() {
       setLoading(false)
     })
   }, [router, status])
+
+  // Load employees list for filter
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    if (role !== 'OWNER' && role !== 'ACCOUNTANT' && role !== 'ROP') return
+    fetch('/api/employees', { cache: 'no-store' })
+      .then(res => res.json())
+      .then(data => setEmployees(data.map((e: any) => ({ id: e.id, name: e.name }))))
+      .catch(() => { })
+  }, [status, role])
+
+  // Load extended KPI
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    const params = new URLSearchParams()
+    if (extFilter.agentId !== 'all') params.set('agentId', extFilter.agentId)
+    if (extFilter.year) params.set('year', extFilter.year)
+    if (extFilter.month) params.set('month', extFilter.month)
+    if (extFilter.quarter) params.set('quarter', extFilter.quarter)
+
+    fetch(`/api/dashboard/extended?${params.toString()}`, { cache: 'no-store' })
+      .then(res => res.json())
+      .then(data => setExtendedKPI(data))
+      .catch(() => { })
+  }, [status, extFilter])
+
+  const fmtCurrency = (n: number) =>
+    new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(n)
 
   if (loading) {
     return (
@@ -169,89 +215,144 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {kpiData.map((kpi, index) => (
-            <Card key={index} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">
-                  {kpi.title}
-                </CardTitle>
-                <div className={kpi.color}>
-                  <MetricHelp
-                    title={kpi.title}
-                    description="Пояснение расчета показателя"
-                    trigger={kpi.icon}
-                    summary={
-                      kpi.title === 'Ожидаю итого'
-                        ? 'Показывает, сколько комиссионных в сумме “в работе” по всем не отмененным сделкам.'
-                        : kpi.title === 'В задатках'
-                          ? 'Показывает, сколько комиссионных приходится на сделки, где уже внесен задаток.'
-                          : kpi.title === 'На оплате'
-                            ? 'Показывает, сколько комиссионных “в дебиторке”: сделки на финальных этапах, где ждем оплату.'
-                            : 'Показывает прибыль по закрытым сделкам за текущий месяц (по формуле сделки).'
-                    }
-                    details={
-                      kpi.title === 'Ожидаю итого' ? (
-                        <div className="space-y-2">
-                          <div className="font-medium">Как считается</div>
-                          <div className="text-muted-foreground">Складываем комиссию агентства по всем сделкам, которые не отменены.</div>
-                          <div className="text-muted-foreground">
-                            Это “потенциал” по сделкам в работе: часть из них может быть еще на ранних этапах.
-                          </div>
-                          <div className="text-muted-foreground">Число рядом — сколько сделок попало в расчет.</div>
-                        </div>
-                      ) : kpi.title === 'В задатках' ? (
-                        <div className="space-y-2">
-                          <div className="font-medium">Как считается</div>
-                          <div className="text-muted-foreground">
-                            Складываем комиссию агентства по сделкам со статусом «Задаток» (не отмененные).
-                          </div>
-                          <div className="text-muted-foreground">Число рядом — сколько таких сделок.</div>
-                        </div>
-                      ) : kpi.title === 'На оплате' ? (
-                        <div className="space-y-2">
-                          <div className="font-medium">Как считается</div>
-                          <div className="text-muted-foreground">
-                            Складываем комиссию агентства по сделкам на этапах «Регистрация / Ожидание счета / Ожидание оплаты» (не отмененные).
-                          </div>
-                          <div className="text-muted-foreground">Это сумма, которую ожидаем получить в ближайшее время.</div>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <div className="font-medium">Как считается</div>
-                          <div className="text-muted-foreground">
-                            Берем все закрытые сделки текущего месяца и складываем их «чистую прибыль по сделке».
-                          </div>
-                          <div className="text-muted-foreground">
-                            Чистая прибыль по сделке = комиссия агентства − налоги − внешние расходы (юрист/ипотека/реклама по сделке и т.п.) − зарплата (агенту и РОПу).
-                          </div>
-                          <div className="text-muted-foreground">
-                            Важно: это прибыль именно по сделкам, без учета постоянных расходов офиса (аренда, сервисы и т.п.).
-                          </div>
-                        </div>
-                      )
-                    }
-                  />
+
+        {/* Extended KPI with Filters */}
+        {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
+          <Card className="mb-8">
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Filter className="h-5 w-5" />
+                    Расширенная аналитика
+                  </CardTitle>
+                  <CardDescription>Выручка с фильтрами по периоду и агенту</CardDescription>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{kpi.value}</div>
-                <div className="flex items-center space-x-2 text-xs text-gray-500 mt-1">
-                  {kpi.change && (
-                    <>
-                      <span className={kpi.change > 0 ? 'text-green-600' : 'text-red-600'}>
-                        {kpi.change > 0 ? '↑' : '↓'} {Math.abs(kpi.change)}%
-                      </span>
-                      <span>к прошлому месяцу</span>
-                    </>
+                <div className="flex flex-wrap gap-2">
+                  {employees.length > 0 && (
+                    <Select value={extFilter.agentId} onValueChange={v => setExtFilter(f => ({ ...f, agentId: v }))}>
+                      <SelectTrigger className="w-[180px]">
+                        <Users className="h-4 w-4 mr-2" />
+                        <SelectValue placeholder="Агент" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Все агенты</SelectItem>
+                        {employees.map(e => (
+                          <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
+                  <Select value={extFilter.year} onValueChange={v => setExtFilter(f => ({ ...f, year: v }))}>
+                    <SelectTrigger className="w-[100px]">
+                      <SelectValue placeholder="Год" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[2023, 2024, 2025, 2026].map(y => (
+                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={extFilter.month} onValueChange={v => setExtFilter(f => ({ ...f, month: v, quarter: 'none' }))}>
+                    <SelectTrigger className="w-[140px]">
+                      <Calendar className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Месяц" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Весь год</SelectItem>
+                      {['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'].map((m, i) => (
+                        <SelectItem key={i} value={(i + 1).toString()}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={extFilter.quarter} onValueChange={v => setExtFilter(f => ({ ...f, quarter: v, month: 'none' }))}>
+                    <SelectTrigger className="w-[120px]">
+                      <SelectValue placeholder="Квартал" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      <SelectItem value="1">Q1</SelectItem>
+                      <SelectItem value="2">Q2</SelectItem>
+                      <SelectItem value="3">Q3</SelectItem>
+                      <SelectItem value="4">Q4</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">{kpi.description}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-blue-800 flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      Выручка по дате брони
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-blue-900">
+                      {extendedKPI ? fmtCurrency(extendedKPI.revenueByDeposit.value) : '—'}
+                    </div>
+                    <p className="text-xs text-blue-600 mt-1">
+                      {extendedKPI?.revenueByDeposit.count ?? 0} сделок
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-green-800 flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" />
+                      Выручка по дате сделки
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-900">
+                      {extendedKPI ? fmtCurrency(extendedKPI.revenueByDeal.value) : '—'}
+                    </div>
+                    <p className="text-xs text-green-600 mt-1">
+                      {extendedKPI?.revenueByDeal.count ?? 0} сделок
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-orange-800 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      В задатках выручка
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-900">
+                      {extendedKPI ? fmtCurrency(extendedKPI.depositsRevenue.value) : '—'}
+                    </div>
+                    <p className="text-xs text-orange-600 mt-1">
+                      {extendedKPI?.depositsRevenue.count ?? 0} сделок
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-purple-800 flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Выручка ожидаю
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-purple-900">
+                      {extendedKPI ? fmtCurrency(extendedKPI.pendingRevenue.value) : '—'}
+                    </div>
+                    <p className="text-xs text-purple-600 mt-1">
+                      {extendedKPI?.pendingRevenue.count ?? 0} сделок
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Main Content */}
         <Tabs defaultValue="deals" className="space-y-6">

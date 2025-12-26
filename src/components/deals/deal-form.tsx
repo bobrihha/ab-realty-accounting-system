@@ -39,6 +39,9 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
     object: '',
     price: '',
     commission: '',
+    agentRateApplied: '',
+    ropRateApplied: '',
+    legalServicesAmount: '',
     agent: '',
     status: 'deposit' as const,
     depositDate: new Date(),
@@ -57,6 +60,9 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
       object: formData.object,
       price: parseFloat(formData.price) || 0,
       commission: parseFloat(formData.commission) || 0,
+      agentRateApplied: formData.agentRateApplied.trim() === '' ? undefined : parseFloat(formData.agentRateApplied),
+      ropRateApplied: formData.ropRateApplied.trim() === '' ? undefined : parseFloat(formData.ropRateApplied),
+      legalServicesAmount: formData.legalServices ? parseFloat(formData.legalServicesAmount) || 0 : 0,
       agent: formData.agent,
       status: formData.status,
       depositDate: formData.depositDate.toISOString(),
@@ -75,6 +81,9 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
       object: '',
       price: '',
       commission: '',
+      agentRateApplied: '',
+      ropRateApplied: '',
+      legalServicesAmount: '',
       agent: '',
       status: 'deposit',
       depositDate: new Date(),
@@ -185,6 +194,26 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
+                <Label htmlFor="agentRateApplied">Ставка агента (%)</Label>
+                <Input
+                  id="agentRateApplied"
+                  type="number"
+                  value={formData.agentRateApplied}
+                  onChange={(e) => setFormData(prev => ({ ...prev, agentRateApplied: e.target.value }))}
+                  placeholder="по умолчанию"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ropRateApplied">Ставка РОПа (%)</Label>
+                <Input
+                  id="ropRateApplied"
+                  type="number"
+                  value={formData.ropRateApplied}
+                  onChange={(e) => setFormData(prev => ({ ...prev, ropRateApplied: e.target.value }))}
+                  placeholder="по умолчанию"
+                />
+              </div>
+              <div>
                 <Label htmlFor="contractType">Тип договора</Label>
                 <Select value={formData.contractType} onValueChange={(value) => setFormData(prev => ({ ...prev, contractType: value }))}>
                   <SelectTrigger>
@@ -205,12 +234,32 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
                   type="checkbox"
                   id="legalServices"
                   checked={formData.legalServices}
-                  onChange={(e) => setFormData(prev => ({ ...prev, legalServices: e.target.checked }))}
+                  onChange={(e) =>
+                    setFormData(prev => ({
+                      ...prev,
+                      legalServices: e.target.checked,
+                      legalServicesAmount: e.target.checked ? prev.legalServicesAmount : ''
+                    }))
+                  }
                   className="rounded"
                 />
                 <Label htmlFor="legalServices">Юридические услуги</Label>
               </div>
             </div>
+            {formData.legalServices && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="legalServicesAmount">Стоимость юр. услуг (₽)</Label>
+                  <Input
+                    id="legalServicesAmount"
+                    type="number"
+                    value={formData.legalServicesAmount}
+                    onChange={(e) => setFormData(prev => ({ ...prev, legalServicesAmount: e.target.value }))}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Даты и статус */}

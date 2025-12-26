@@ -7,11 +7,12 @@ export default function nextConfig(phase: string): NextConfig {
   return {
     output: "standalone",
     // Разделяем артефакты dev и build, чтобы они не конфликтовали и не ломали чанки.
+    // Разделяем артефакты dev и build, чтобы они не конфликтовали и не ломали чанки.
     distDir: isDev ? ".next-dev" : ".next",
+    reactStrictMode: false,
     typescript: {
       ignoreBuildErrors: true,
     },
-    reactStrictMode: false,
     eslint: {
       ignoreDuringBuilds: true,
     },
@@ -22,6 +23,9 @@ export default function nextConfig(phase: string): NextConfig {
         config.cache = false;
       }
       return config;
+    },
+    experimental: {
+      cpus: 2,
     },
   };
 }

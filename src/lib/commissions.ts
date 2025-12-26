@@ -17,22 +17,31 @@ export async function getRateForEmployeeAtDate(
 export function computeWaterfall(params: {
   grossCommission: number
   taxRatePercent: number
-  externalExpenses: number
+  referralExpense: number
+  brokerExpense: number
+  lawyerExpense: number
+  otherExpense: number
   agentRatePercent: number
   ropRatePercent: number
 }) {
   const taxes = params.grossCommission * (params.taxRatePercent / 100)
-  const cleanedBase = params.grossCommission - taxes - params.externalExpenses
-  const ropCommission = cleanedBase * (params.ropRatePercent / 100)
-  const agentCommission = cleanedBase * (params.agentRatePercent / 100)
-  const netProfit = cleanedBase - ropCommission - agentCommission
+  const commissionBase = params.grossCommission - params.referralExpense
+  const ropCommission = commissionBase * (params.ropRatePercent / 100)
+  const agentCommission = commissionBase * (params.agentRatePercent / 100)
+  const nonReferralExpenses = params.brokerExpense + params.lawyerExpense + params.otherExpense
+  const netProfit =
+    params.grossCommission -
+    taxes -
+    params.referralExpense -
+    ropCommission -
+    agentCommission -
+    nonReferralExpenses
 
   return {
     taxes,
-    cleanedBase,
+    cleanedBase: commissionBase,
     ropCommission,
     agentCommission,
     netProfit
   }
 }
-

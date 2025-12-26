@@ -22,6 +22,55 @@ function normalizeDealExpenses<T extends { brokerExpense?: number; lawyerExpense
   return { brokerExpense, lawyerExpense, referralExpense, otherExpense, externalExpenses: normalizedExternal }
 }
 
+function parseOptionalNumber(value: unknown) {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
+async function resolveAppliedRates(params: {
+  agentId: string
+  ropId: string | null
+  depositDate: Date
+  agentRateInput: number | null | undefined
+  ropRateInput: number | null | undefined
+  existingAgentRate: number | null
+  existingRopRate: number | null
+}) {
+  const agent = await db.employee.findUnique({ where: { id: params.agentId } })
+  const agentRateDefault =
+    agent &&
+    ((await getRateForEmployeeAtDate(params.agentId, 'AGENT', params.depositDate)) ??
+      agent.baseRateAgent ??
+      0)
+  const agentRate =
+    params.agentRateInput === undefined
+      ? params.existingAgentRate ?? agentRateDefault ?? 0
+      : params.agentRateInput === null
+        ? agentRateDefault ?? 0
+        : params.agentRateInput
+
+  let ropRateDefault = 0
+  if (params.ropId) {
+    const rop = await db.employee.findUnique({ where: { id: params.ropId } })
+    if (rop) {
+      ropRateDefault =
+        (await getRateForEmployeeAtDate(params.ropId, 'ROP', params.depositDate)) ??
+        rop.baseRateROP ??
+        0
+    }
+  }
+  const ropRate =
+    params.ropRateInput !== undefined && params.ropRateInput !== null
+      ? params.ropRateInput
+      : params.ropId
+        ? params.existingRopRate ?? ropRateDefault
+        : params.existingRopRate ?? 0
+
+  return { agentRate, ropRate }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -75,6 +124,11 @@ export async function PUT(
     const data = await request.json()
     const commissionsManual =
       typeof data.commissionsManual === 'boolean' ? data.commissionsManual : existing.commissionsManual
+    const legalServicesInput = typeof data.legalServices === 'boolean' ? data.legalServices : undefined
+    const legalServicesAmountInput = parseOptionalNumber((data as any).legalServicesAmount)
+
+    const agentRateInput = parseOptionalNumber((data as any).agentRateApplied)
+    const ropRateInput = parseOptionalNumber((data as any).ropRateApplied)
 
     const expenses = normalizeDealExpenses({
       brokerExpense: data.brokerExpense ?? existing.brokerExpense,
@@ -89,6 +143,7 @@ export async function PUT(
       object: data.object ?? undefined,
       price: data.price ?? undefined,
       commission: data.commission ?? undefined,
+      agentId: data.agentId ?? undefined,
       status: data.status ?? undefined,
       depositDate: data.depositDate ? new Date(data.depositDate) : undefined,
       dealDate: data.dealDate ? new Date(data.dealDate) : data.dealDate === null ? null : undefined,
@@ -98,7 +153,7 @@ export async function PUT(
           ? null
           : undefined,
       contractType: data.contractType ?? undefined,
-      legalServices: typeof data.legalServices === 'boolean' ? data.legalServices : undefined,
+      legalServices: legalServicesInput ?? undefined,
       notes: data.notes === null ? null : data.notes ?? undefined,
       taxRate: data.taxRate ?? undefined,
       brokerExpense: data.brokerExpense ?? undefined,
@@ -124,56 +179,80 @@ export async function PUT(
         data.otherExpense !== undefined ||
         data.agentId !== undefined ||
         data.ropId !== undefined ||
-        data.depositDate !== undefined)
+        data.depositDate !== undefined ||
+        agentRateInput !== undefined ||
+        ropRateInput !== undefined)
 
     if (shouldRecalc) {
       const depositDate = data.depositDate ? new Date(data.depositDate) : existing.depositDate
-      const agentId = existing.agentId
-      const ropId = existing.ropId
+      const agentId = (data.agentId as string | undefined) ?? existing.agentId
+      const ropId = (data.ropId as string | undefined) ?? existing.ropId
 
-      const agent = await db.employee.findUnique({ where: { id: agentId } })
-      if (agent) {
-        const agentRate =
-          (await getRateForEmployeeAtDate(agentId, 'AGENT', depositDate)) ??
-          agent.baseRateAgent ??
-          0
+      const { agentRate, ropRate } = await resolveAppliedRates({
+        agentId,
+        ropId,
+        depositDate,
+        agentRateInput,
+        ropRateInput,
+        existingAgentRate: existing.agentRateApplied,
+        existingRopRate: existing.ropRateApplied
+      })
 
-        let ropRate = 0
-        if (ropId) {
-          const rop = await db.employee.findUnique({ where: { id: ropId } })
-          if (rop) {
-            ropRate =
-              (await getRateForEmployeeAtDate(ropId, 'ROP', depositDate)) ??
-              rop.baseRateROP ??
-              0
-          }
-        }
+      const grossCommission = Number(data.commission ?? existing.commission)
+      const taxRate = Number(data.taxRate ?? existing.taxRate)
 
-        const grossCommission = Number(data.commission ?? existing.commission)
-        const taxRate = Number(data.taxRate ?? existing.taxRate)
-        const externalExpenses = expenses.externalExpenses
+      const waterfall = computeWaterfall({
+        grossCommission,
+        taxRatePercent: taxRate,
+        referralExpense: expenses.referralExpense,
+        brokerExpense: expenses.brokerExpense,
+        lawyerExpense: expenses.lawyerExpense,
+        otherExpense: expenses.otherExpense,
+        agentRatePercent: agentRate,
+        ropRatePercent: ropRate
+      })
 
-        const waterfall = computeWaterfall({
-          grossCommission,
-          taxRatePercent: taxRate,
-          externalExpenses,
-          agentRatePercent: agentRate,
-          ropRatePercent: ropRate
-        })
-
-        update = {
-          ...update,
-          ropRateApplied: ropRate,
-          agentRateApplied: agentRate,
-          ropCommission: waterfall.ropCommission,
-          agentCommission: waterfall.agentCommission,
-          netProfit: waterfall.netProfit
-        }
+      update = {
+        ...update,
+        ropRateApplied: ropRate,
+        agentRateApplied: agentRate,
+        ropCommission: waterfall.ropCommission,
+        agentCommission: waterfall.agentCommission,
+        netProfit: waterfall.netProfit
       }
     } else if (commissionsManual) {
       if (data.ropCommission !== undefined) update.ropCommission = data.ropCommission
       if (data.agentCommission !== undefined) update.agentCommission = data.agentCommission
       if (data.netProfit !== undefined) update.netProfit = data.netProfit
+    }
+
+    if (!shouldRecalc && (agentRateInput !== undefined || ropRateInput !== undefined)) {
+      const depositDate = data.depositDate ? new Date(data.depositDate) : existing.depositDate
+      const agentId = (data.agentId as string | undefined) ?? existing.agentId
+      const ropId = (data.ropId as string | undefined) ?? existing.ropId
+
+      const { agentRate, ropRate } = await resolveAppliedRates({
+        agentId,
+        ropId,
+        depositDate,
+        agentRateInput,
+        ropRateInput,
+        existingAgentRate: existing.agentRateApplied,
+        existingRopRate: existing.ropRateApplied
+      })
+
+      update.agentRateApplied = agentRate
+      update.ropRateApplied = ropRate
+    }
+
+    if (legalServicesInput !== undefined || legalServicesAmountInput !== undefined) {
+      const legalServicesFinal = legalServicesInput ?? existing.legalServices
+      let legalServicesAmountFinal = existing.legalServicesAmount ?? 0
+      if (legalServicesAmountInput !== undefined) {
+        legalServicesAmountFinal = legalServicesAmountInput ?? 0
+      }
+      if (!legalServicesFinal) legalServicesAmountFinal = 0
+      update.legalServicesAmount = legalServicesAmountFinal
     }
 
     const deal = await db.deal.update({

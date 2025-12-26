@@ -13,10 +13,9 @@ export async function ensureDealPayrollAccruals(dealId: string) {
       ropCommission: true
     }
   })
-  if (!deal) return
-  if (deal.status !== 'CLOSED') return
+  if (!deal || !deal.dealDate || deal.status === 'CANCELLED') return
 
-  const accruedAt = deal.dealDate ?? new Date()
+  const accruedAt = deal.dealDate
 
   if (deal.agentCommission != null && Number(deal.agentCommission) > 0) {
     await db.payrollAccrual.upsert({

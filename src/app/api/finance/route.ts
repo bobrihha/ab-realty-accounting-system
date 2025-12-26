@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const to = new Date(year, 11, 31, 23, 59, 59, 999)
 
     const closedDeals = await db.deal.findMany({
-      where: { status: 'CLOSED', dealDate: { gte: from, lte: to } },
+      where: { dealDate: { gte: from, lte: to }, NOT: { status: 'CANCELLED' } },
       select: { dealDate: true, commission: true, netProfit: true }
     })
 

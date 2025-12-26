@@ -3,6 +3,11 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env.sh"
 
+if [[ "$DATABASE_URL" != file:* ]]; then
+  echo "migrate-expenses-to-cashflow is SQLite-only. Skipping."
+  exit 0
+fi
+
 DB_PATH="${DATABASE_URL#file:}"
 
 has_expenses_table="$(

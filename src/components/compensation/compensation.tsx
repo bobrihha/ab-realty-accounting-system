@@ -68,7 +68,7 @@ export function Compensation() {
         <Card>
           <CardHeader>
             <CardTitle>Заработано за {data.month}</CardTitle>
-            <CardDescription>Сумма комиссий по закрытым сделкам</CardDescription>
+            <CardDescription>Сумма комиссий по сделкам с датой сделки</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{fmt(data.earned)}</div>

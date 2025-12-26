@@ -10,6 +10,10 @@ export async function GET(request: NextRequest) {
     const ropId = searchParams.get('ropId')
     const grossCommission = parseFloat(searchParams.get('grossCommission') || '0')
     const taxRate = parseFloat(searchParams.get('taxRate') || '6')
+    const referralExpense = parseFloat(searchParams.get('referralExpense') || '0')
+    const brokerExpense = parseFloat(searchParams.get('brokerExpense') || '0')
+    const lawyerExpense = parseFloat(searchParams.get('lawyerExpense') || '0')
+    let otherExpense = parseFloat(searchParams.get('otherExpense') || '0')
     const externalExpenses = parseFloat(searchParams.get('externalExpenses') || '0')
     const at = searchParams.get('at') ? new Date(searchParams.get('at') as string) : new Date()
 
@@ -28,18 +32,33 @@ export async function GET(request: NextRequest) {
       rop?.baseRateROP ??
       0
 
+    const breakdownSum = referralExpense + brokerExpense + lawyerExpense + otherExpense
+    if (breakdownSum === 0 && externalExpenses !== 0) {
+      otherExpense = externalExpenses
+    }
+
     const { taxes, cleanedBase, ropCommission, agentCommission, netProfit } = computeWaterfall({
       grossCommission,
       taxRatePercent: taxRate,
-      externalExpenses,
+      referralExpense,
+      brokerExpense,
+      lawyerExpense,
+      otherExpense,
       agentRatePercent: agentRate,
       ropRatePercent: ropRate
     })
+    const totalExternal = referralExpense + brokerExpense + lawyerExpense + otherExpense
+    const baseLabel = 'База для % (выручка − рекомендация)'
+    const otherExpenses = brokerExpense + otherExpense
 
     const calculation = {
       grossCommission,
       taxes,
-      externalExpenses,
+      externalExpenses: totalExternal,
+      referralExpense,
+      brokerExpense,
+      lawyerExpense,
+      otherExpense,
       cleanedBase,
       ropCommission,
       agentCommission,
@@ -50,10 +69,12 @@ export async function GET(request: NextRequest) {
       calculationSteps: [
         `Валовая комиссия: ${grossCommission.toLocaleString('ru-RU')} ₽`,
         `Налоги (${taxRate}%): ${taxes.toLocaleString('ru-RU')} ₽`,
-        `Внешние расходы: ${externalExpenses.toLocaleString('ru-RU')} ₽`,
-        `Очищенная база: ${cleanedBase.toLocaleString('ru-RU')} ₽`,
+        `Рекомендация: ${referralExpense.toLocaleString('ru-RU')} ₽`,
+        `${baseLabel}: ${cleanedBase.toLocaleString('ru-RU')} ₽`,
         `Комиссия РОПа (${ropRate}%): ${ropCommission.toLocaleString('ru-RU')} ₽`,
         `Комиссия агента (${agentRate}%): ${agentCommission.toLocaleString('ru-RU')} ₽`,
+        `Юрист: ${lawyerExpense.toLocaleString('ru-RU')} ₽`,
+        `Расходы (брокер/ипотека + прочее): ${otherExpenses.toLocaleString('ru-RU')} ₽`,
         `Чистая прибыль: ${netProfit.toLocaleString('ru-RU')} ₽`
       ]
     }

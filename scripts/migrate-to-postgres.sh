@@ -1,6 +1,38 @@
+#!/usr/bin/env bash
+# PostgreSQL Migration Script - Migrates from SQLite to PostgreSQL
+
+set -euo pipefail
+
+echo "=== PostgreSQL Migration Script ==="
+echo ""
+echo "This script will:"
+echo "1. Update Prisma schema to use PostgreSQL"
+echo "2. Generate new Prisma client"
+echo "3. Push schema to PostgreSQL database"
+echo "4. Initialize clean database with owner user"
+echo ""
+
+# Check if DATABASE_URL is set
+if [ -z "${DATABASE_URL:-}" ]; then
+    echo "Error: DATABASE_URL environment variable is not set"
+    echo "Please set it to your PostgreSQL connection string:"
+    echo "  export DATABASE_URL='postgresql://user:password@localhost:5432/dbname'"
+    exit 1
+fi
+
+echo "Using DATABASE_URL: ${DATABASE_URL}"
+echo ""
+
+# Backup current schema
+cp prisma/schema.prisma prisma/schema.prisma.sqlite.bak
+echo "✓ Backed up current schema to prisma/schema.prisma.sqlite.bak"
+
+# Update schema to PostgreSQL
+cat > prisma/schema.prisma << 'EOF'
+// Система управленческого и финансового учета для агентства недвижимости
+
 generator client {
   provider = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -67,7 +99,6 @@ model Deal {
   plannedCloseDate DateTime?
   contractType    ContractType @default(EXCLUSIVE)
   legalServices   Boolean      @default(false)
-  legalServicesAmount Float    @default(0) // Стоимость юр. услуг
   notes           String?
   taxRate         Float        @default(6) // Ставка налога в %
   // Расходы по сделке (разбивка)
@@ -237,3 +268,33 @@ enum ForecastStatus {
   WARNING
   CRITICAL
 }
+EOF
+
+echo "✓ Updated schema to use PostgreSQL"
+echo ""
+
+# Generate Prisma Client
+echo "Generating Prisma Client..."
+npx prisma generate
+
+echo "✓ Prisma Client generated"
+echo ""
+
+# Push schema to database
+echo "Pushing schema to PostgreSQL database..."
+npx prisma db push --accept-data-loss
+
+echo "✓ Database schema created"
+echo ""
+
+# Run seed
+echo "Creating owner user..."
+npm run db:seed
+
+echo ""
+echo "=== Migration Complete ==="
+echo ""
+echo "✓ PostgreSQL schema created"
+echo "✓ Owner user created (owner@agency.local / owner12345)"
+echo ""
+echo "Your system is ready for production!"

@@ -144,7 +144,7 @@ export function Payroll() {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Ведомость выплат</h2>
-          <p className="text-gray-500">Начисления по закрытым сделкам и частичные выплаты через казначейство</p>
+          <p className="text-gray-500">Начисления по сделкам с датой сделки и частичные выплаты через казначейство</p>
         </div>
         <Button variant="outline" onClick={() => load().catch(err => alert(err.message))}>
           <RefreshCw className="h-4 w-4 mr-2" />
@@ -232,7 +232,7 @@ export function Payroll() {
               <TableRow>
                 <TableHead>Сотрудник</TableHead>
                 <TableHead>Сделка</TableHead>
-                <TableHead>Дата закрытия</TableHead>
+                <TableHead>Дата сделки</TableHead>
                 <TableHead className="text-right">Начислено</TableHead>
                 <TableHead className="text-right">Выплачено</TableHead>
                 <TableHead className="text-right">Остаток</TableHead>

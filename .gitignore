@@ -56,3 +56,10 @@ test
 prompt
 
 server.log
+
+# Production deployment
+.env.production
+backups/
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/logs/

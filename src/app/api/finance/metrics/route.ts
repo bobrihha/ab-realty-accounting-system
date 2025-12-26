@@ -7,9 +7,8 @@ function canViewFinance(role: string) {
   return role === 'OWNER' || role === 'ACCOUNTANT'
 }
 
-function cleanedBase(d: { commission: number; taxRate: number; externalExpenses: number }) {
-  const taxes = d.commission * (d.taxRate / 100)
-  return d.commission - taxes - d.externalExpenses
+function cleanedBase(d: { commission: number; referralExpense: number }) {
+  return d.commission - d.referralExpense
 }
 
 export async function GET(request: NextRequest) {
@@ -36,7 +35,7 @@ export async function GET(request: NextRequest) {
     })
 
     const dealsClosed = await db.deal.findMany({
-      where: { status: 'CLOSED', dealDate: { gte: from, lte: to } },
+      where: { dealDate: { gte: from, lte: to }, NOT: { status: 'CANCELLED' } },
       select: {
         id: true,
         agentId: true,
@@ -47,10 +46,25 @@ export async function GET(request: NextRequest) {
         netProfit: true,
         agentCommission: true,
         ropCommission: true,
-        taxRate: true,
-        externalExpenses: true,
+        referralExpense: true,
         agentRateApplied: true,
         ropRateApplied: true
+      }
+    })
+
+    const legalServicesDeals = await db.deal.findMany({
+      where: {
+        legalServices: true,
+        NOT: { status: 'CANCELLED' },
+        OR: [
+          { dealDate: { gte: from, lte: to } },
+          { dealDate: null, depositDate: { gte: from, lte: to } }
+        ]
+      },
+      select: {
+        dealDate: true,
+        depositDate: true,
+        legalServicesAmount: true
       }
     })
 
@@ -84,6 +98,19 @@ export async function GET(request: NextRequest) {
       const idx = monthIndex.get(mk)
       if (idx == null) return null
       return months[idx]
+    }
+
+    const legalMonths = months.map(m => ({
+      monthKey: m.monthKey,
+      month: m.month,
+      dealsCount: 0,
+      amount: 0
+    }))
+    const legalMonthIndex = new Map(legalMonths.map((m, i) => [m.monthKey, i] as const))
+    const ensureLegalMonth = (mk: string) => {
+      const idx = legalMonthIndex.get(mk)
+      if (idx == null) return null
+      return legalMonths[idx]
     }
 
     type PersonMonth = {
@@ -153,6 +180,16 @@ export async function GET(request: NextRequest) {
       m.bookingRevenue += d.commission
     }
 
+    for (const d of legalServicesDeals) {
+      const date = d.dealDate ?? d.depositDate
+      if (!date) continue
+      const mk = mkFor(date)
+      const m = ensureLegalMonth(mk)
+      if (!m) continue
+      m.dealsCount += 1
+      m.amount += Number(d.legalServicesAmount ?? 0)
+    }
+
     for (const d of dealsClosed) {
       if (!d.dealDate) continue
       const mk = mkFor(d.dealDate)
@@ -165,7 +202,7 @@ export async function GET(request: NextRequest) {
       m.agentCommission += d.agentCommission ?? 0
       m.ropCommission += d.ropCommission ?? 0
 
-      const base = cleanedBase({ commission: d.commission, taxRate: d.taxRate, externalExpenses: d.externalExpenses })
+      const base = cleanedBase({ commission: d.commission, referralExpense: d.referralExpense })
       if (base > 0) {
         m._baseSum += base
         m._agentWeighted += base * (d.agentRateApplied ?? 0)
@@ -251,7 +288,7 @@ export async function GET(request: NextRequest) {
       a.netProfit += d.netProfit ?? 0
       a.commission += d.agentCommission ?? 0
 
-      const base = cleanedBase({ commission: d.commission, taxRate: d.taxRate, externalExpenses: d.externalExpenses })
+      const base = cleanedBase({ commission: d.commission, referralExpense: d.referralExpense })
       if (base > 0) {
         a._baseSum += base
         a._rateWeighted += base * (d.agentRateApplied ?? 0)
@@ -357,6 +394,15 @@ export async function GET(request: NextRequest) {
       .map(r => ({ employeeId: r.employeeId, name: r.name, months: finalizePersonMonths(r.months) }))
       .sort((a, b) => a.name.localeCompare(b.name))
 
+    const legalTotals = legalMonths.reduce(
+      (acc, m) => {
+        acc.dealsCount += m.dealsCount
+        acc.amount += m.amount
+        return acc
+      },
+      { dealsCount: 0, amount: 0 }
+    )
+
     return NextResponse.json({
       year,
       months: monthRows,
@@ -364,7 +410,11 @@ export async function GET(request: NextRequest) {
       byAgent: agentRows,
       byRop: ropRows,
       byAgentMonthly: agentMonthlyRows,
-      byRopMonthly: ropMonthlyRows
+      byRopMonthly: ropMonthlyRows,
+      legalServices: {
+        months: legalMonths,
+        totals: legalTotals
+      }
     })
   } catch (error) {
     if ((error as Error).message === 'UNAUTHORIZED') {

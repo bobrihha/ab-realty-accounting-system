@@ -15,7 +15,7 @@
 ### Технологический стек:
 - **Frontend**: Next.js 15, TypeScript, Tailwind CSS, shadcn/ui
 - **Backend**: Next.js API Routes, Prisma ORM
-- **Database**: SQLite
+- **Database**: PostgreSQL
 
 ## 🚀 Функциональность
 

@@ -18,12 +18,12 @@ export async function GET() {
     const commissionField = session.role === 'AGENT' ? 'agentCommission' : 'ropCommission'
 
     const earnedDeals = await db.deal.findMany({
-      where: { ...whereBase, status: 'CLOSED', dealDate: { gte: from, lte: to } },
+      where: { ...whereBase, dealDate: { gte: from, lte: to }, NOT: { status: 'CANCELLED' } },
       select: { id: true, client: true, object: true, commission: true, agentCommission: true, ropCommission: true, dealDate: true }
     })
 
     const pipelineDeals = await db.deal.findMany({
-      where: { ...whereBase, status: { in: ['DEPOSIT', 'REGISTRATION', 'WAITING_INVOICE', 'WAITING_PAYMENT'] } },
+      where: { ...whereBase, dealDate: null, NOT: { status: 'CANCELLED' } },
       select: { id: true, client: true, object: true, commission: true, agentCommission: true, ropCommission: true, plannedCloseDate: true }
     })
 
