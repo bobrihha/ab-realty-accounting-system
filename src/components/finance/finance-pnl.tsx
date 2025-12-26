@@ -173,7 +173,7 @@ export function FinancePNL() {
           'Выручка (бронь)': m.bookingRevenue,
           'Выручка (сделки)': m.dealRevenue,
           'Стоимость объектов': m.soldPrice,
-          'Чистая прибыль': m.netProfit,
+          'Доход': m.netProfit,
           'Комиссия агента': m.agentCommission,
           'Комиссия РОПа': m.ropCommission,
           '% Агента': m.agentPct,
@@ -221,7 +221,7 @@ export function FinancePNL() {
           'Сделок': m.dealsCount,
           'Сумма': m.amount
         }))
-      })
+      } as any)
     }
 
     exportToExcel(`finance_report_${selectedYear}`, sheets)
@@ -347,12 +347,12 @@ export function FinancePNL() {
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-600">Чистая прибыль (сделки)</CardTitle>
+                  <CardTitle className="text-sm font-medium text-gray-600">Доход (сделки)</CardTitle>
                   <MetricHelp
-                    title="Чистая прибыль (сделки)"
+                    title="Доход (сделки)"
                     description="Как считается показатель"
                     trigger={<Target className="h-6 w-6 text-green-600" />}
-                    summary="Сколько прибыли принесли сделки с датой сделки (после налогов, выплат и расходов по сделке)."
+                    summary="Сколько дохода принесли сделки с датой сделки (после налогов, выплат и расходов по сделке)."
                     details={
                       <div className="space-y-2">
                         <div className="font-medium">Как считается</div>
@@ -411,7 +411,7 @@ export function FinancePNL() {
                         <TableHead className="text-right">Выручка (бронь)</TableHead>
                         <TableHead className="text-right">Выручка (сделки)</TableHead>
                         <TableHead className="text-right">Стоимость объектов</TableHead>
-                        <TableHead className="text-right">Чистая прибыль</TableHead>
+                        <TableHead className="text-right">Доход</TableHead>
                         <TableHead className="text-right">% агент</TableHead>
                         <TableHead className="text-right">% РОП</TableHead>
                         <TableHead className="text-right">% суммарно</TableHead>
