@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
           : 0
 
     const grossCommission = Number(data.commission ?? 0)
-    const taxRate = Number(data.taxRate ?? 6)
+    const taxRate = data.taxRate === undefined || data.taxRate === null || data.taxRate === '' ? 6 : Number(data.taxRate)
 
     const expenses = normalizeDealExpenses({
       brokerExpense: data.brokerExpense,

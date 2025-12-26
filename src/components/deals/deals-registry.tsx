@@ -193,7 +193,7 @@ export function DealsRegistry() {
       legalServices: formData.legalServices,
       legalServicesAmount: formData.legalServices ? parseFloat(formData.legalServicesAmount) || 0 : 0,
       notes: formData.notes || undefined,
-      taxRate: parseFloat(formData.taxRate) || 6,
+      taxRate: formData.taxRate.trim() === '' ? 0 : parseFloat(formData.taxRate) || 0,
       brokerExpense: parseFloat(formData.brokerExpense) || 0,
       lawyerExpense: parseFloat(formData.lawyerExpense) || 0,
       referralExpense: parseFloat(formData.referralExpense) || 0,
