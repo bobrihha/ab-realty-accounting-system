@@ -18,3 +18,10 @@ export function formatMonthLabel(monthKey: string) {
   return date.toLocaleString('ru-RU', { month: 'long', year: 'numeric' })
 }
 
+export function startOfYear(date: Date) {
+  return new Date(date.getFullYear(), 0, 1, 0, 0, 0, 0)
+}
+
+export function endOfYear(date: Date) {
+  return new Date(date.getFullYear(), 11, 31, 23, 59, 59, 999)
+}

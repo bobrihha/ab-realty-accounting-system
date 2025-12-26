@@ -177,6 +177,19 @@ model PayrollPayment {
   @@map("payroll_payments")
 }
 
+// Юридические услуги (отдельные, не в сделках)
+model LegalService {
+  id          String   @id @default(cuid())
+  client      String
+  amount      Float
+  serviceDate DateTime
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("legal_services")
+}
+
 // Enum'ы
 enum Role {
   AGENT

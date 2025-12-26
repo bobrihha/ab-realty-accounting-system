@@ -11,6 +11,7 @@ import { Treasury } from '@/components/treasury/treasury'
 import { Team } from '@/components/team/team'
 import { Compensation } from '@/components/compensation/compensation'
 import { Payroll } from '@/components/payroll/payroll'
+import { LegalServicesRegistry } from '@/components/legal-services/legal-services'
 import { signOut } from 'next-auth/react'
 import { useSession } from 'next-auth/react'
 import { Badge } from '@/components/ui/badge'
@@ -370,6 +371,9 @@ export default function Dashboard() {
             {(role === 'OWNER' || role === 'ACCOUNTANT') && (
               <TabsTrigger value="payroll">Выплаты</TabsTrigger>
             )}
+            {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+              <TabsTrigger value="legal">Юр.услуги</TabsTrigger>
+            )}
             {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
               <TabsTrigger value="team">Команда</TabsTrigger>
             )}
@@ -403,6 +407,13 @@ export default function Dashboard() {
           {(role === 'OWNER' || role === 'ACCOUNTANT') && (
             <TabsContent value="payroll">
               <Payroll />
+            </TabsContent>
+          )}
+
+          {/* Legal Services Tab */}
+          {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+            <TabsContent value="legal">
+              <LegalServicesRegistry />
             </TabsContent>
           )}
 
