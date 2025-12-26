@@ -52,6 +52,23 @@ type TreasuryKPI = {
   expectedOnPayment: { value: number; count: number }
 }
 
+// Фиксированный список категорий расходов
+const EXPENSE_CATEGORIES = [
+  'Аренда',
+  'Роялти',
+  'ЗП HR',
+  'ЗП офис-менеджер',
+  'ЗП другое',
+  'ЗП директора',
+  'Авито',
+  'Циан',
+  'Яндекс',
+  'ДомКлик',
+  'Маркетинг другой',
+  'Офис расходы',
+  'Другое'
+]
+
 export function Treasury() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [cashFlow, setCashFlow] = useState<CashFlowItem[]>([])
@@ -132,6 +149,46 @@ export function Treasury() {
 
   const totalBalance = useMemo(() => accounts.reduce((sum, a) => sum + (a.balance || 0), 0), [accounts])
   const hasCashGap = useMemo(() => forecast.some(f => f.status === 'critical'), [forecast])
+
+  // Аналитика расходов по категориям и месяцам
+  const expenseAnalytics = useMemo(() => {
+    const expenses = cashFlow.filter(c => c.type === 'EXPENSE')
+
+    // Собираем уникальные месяцы из дат (план или факт)
+    const monthsSet = new Set<string>()
+    expenses.forEach(e => {
+      const date = e.actualDate || e.plannedDate
+      if (date) {
+        const d = new Date(date)
+        const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        monthsSet.add(mk)
+      }
+    })
+    const sortedMonths = Array.from(monthsSet).sort()
+
+    // Группируем по категориям и месяцам
+    const byCategory: Record<string, Record<string, number>> = {}
+    const totals: Record<string, number> = {}
+
+    EXPENSE_CATEGORIES.forEach(cat => {
+      byCategory[cat] = {}
+      totals[cat] = 0
+    })
+
+    expenses.forEach(e => {
+      const cat = EXPENSE_CATEGORIES.includes(e.category) ? e.category : 'Другое'
+      const date = e.actualDate || e.plannedDate
+      if (date) {
+        const d = new Date(date)
+        const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        if (!byCategory[cat]) byCategory[cat] = {}
+        byCategory[cat][mk] = (byCategory[cat][mk] || 0) + e.amount
+        totals[cat] = (totals[cat] || 0) + e.amount
+      }
+    })
+
+    return { months: sortedMonths, byCategory, totals }
+  }, [cashFlow])
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 }).format(amount)
@@ -393,7 +450,16 @@ export function Treasury() {
                 </div>
                 <div className="col-span-2">
                   <Label>Категория</Label>
-                  <Input value={newCashFlow.category} onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))} />
+                  <select
+                    className="w-full border rounded-md p-2"
+                    value={newCashFlow.category}
+                    onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))}
+                  >
+                    <option value="">Выберите категорию</option>
+                    {EXPENSE_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <Label>Дата (план)</Label>
@@ -547,7 +613,16 @@ export function Treasury() {
             </div>
             <div className="col-span-2">
               <Label>Категория</Label>
-              <Input value={newCashFlow.category} onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))} />
+              <select
+                className="w-full border rounded-md p-2"
+                value={newCashFlow.category}
+                onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))}
+              >
+                <option value="">Выберите категорию</option>
+                {EXPENSE_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
             </div>
             <div>
               <Label>Дата (план)</Label>
@@ -804,6 +879,70 @@ export function Treasury() {
               })}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      {/* Аналитика расходов по категориям */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Аналитика расходов</CardTitle>
+          <CardDescription>Расходы по категориям помесячно</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="sticky left-0 bg-white">Категория</TableHead>
+                  {expenseAnalytics.months.map(mk => {
+                    const [y, m] = mk.split('-')
+                    const date = new Date(Number(y), Number(m) - 1, 1)
+                    return (
+                      <TableHead key={mk} className="text-right min-w-[100px]">
+                        {date.toLocaleString('ru-RU', { month: 'short', year: '2-digit' })}
+                      </TableHead>
+                    )
+                  })}
+                  <TableHead className="text-right font-bold">Итого</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {EXPENSE_CATEGORIES.map(cat => {
+                  const catData = expenseAnalytics.byCategory[cat] || {}
+                  const total = expenseAnalytics.totals[cat] || 0
+                  if (total === 0) return null // Скрываем категории без расходов
+                  return (
+                    <TableRow key={cat}>
+                      <TableCell className="font-medium sticky left-0 bg-white">{cat}</TableCell>
+                      {expenseAnalytics.months.map(mk => (
+                        <TableCell key={mk} className="text-right">
+                          {catData[mk] ? formatCurrency(catData[mk]) : '-'}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-right font-bold">{formatCurrency(total)}</TableCell>
+                    </TableRow>
+                  )
+                })}
+                {/* Итого по месяцам */}
+                <TableRow className="bg-gray-50 font-bold">
+                  <TableCell className="sticky left-0 bg-gray-50">Итого</TableCell>
+                  {expenseAnalytics.months.map(mk => {
+                    const monthTotal = EXPENSE_CATEGORIES.reduce((sum, cat) => {
+                      return sum + (expenseAnalytics.byCategory[cat]?.[mk] || 0)
+                    }, 0)
+                    return (
+                      <TableCell key={mk} className="text-right">
+                        {monthTotal > 0 ? formatCurrency(monthTotal) : '-'}
+                      </TableCell>
+                    )
+                  })}
+                  <TableCell className="text-right">
+                    {formatCurrency(Object.values(expenseAnalytics.totals).reduce((a, b) => a + b, 0))}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
