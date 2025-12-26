@@ -86,7 +86,10 @@ export async function GET(request: NextRequest) {
         soldPrice: 0,
         netProfit: 0,
         agentCommission: 0,
-        ropCommission: 0
+        ropCommission: 0,
+        _dealCount: 0,
+        _agentRateSum: 0,
+        _ropRateSum: 0
       }
     })
     const monthIndex = new Map(months.map((m, i) => [m.monthKey, i] as const))
@@ -198,6 +201,10 @@ export async function GET(request: NextRequest) {
       m.netProfit += d.netProfit ?? 0
       m.agentCommission += d.agentCommission ?? 0
       m.ropCommission += d.ropCommission ?? 0
+      // Для расчёта среднего % ставки
+      m._dealCount += 1
+      m._agentRateSum += d.agentRateApplied ?? 0
+      m._ropRateSum += d.ropRateApplied ?? 0
     }
 
     const byAgent = new Map<
@@ -328,9 +335,9 @@ export async function GET(request: NextRequest) {
     }
 
     const monthRows = months.map(m => {
-      // % агента = сумма комиссий агентов / сумма валовой комиссии * 100
-      const agentPct = m.dealRevenue > 0 ? (m.agentCommission / m.dealRevenue) * 100 : 0
-      const ropPct = m.dealRevenue > 0 ? (m.ropCommission / m.dealRevenue) * 100 : 0
+      // Средний % ставки = сумма ставок / количество сделок
+      const agentPct = m._dealCount > 0 ? m._agentRateSum / m._dealCount : 0
+      const ropPct = m._dealCount > 0 ? m._ropRateSum / m._dealCount : 0
       const sumPct = agentPct + ropPct
       const margin = m.dealRevenue > 0 ? (m.netProfit / m.dealRevenue) * 100 : 0
       return {
