@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { RefreshCw } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { RefreshCw, FileText, Download } from 'lucide-react'
 
 type PayrollType = 'AGENT' | 'ROP'
 
@@ -37,18 +38,24 @@ type PayrollAccrual = {
 
 type Employee = { id: string; name: string; role: PayrollType; status: string }
 
+const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
+
 export function Payroll() {
   const [loading, setLoading] = useState(true)
   const [accruals, setAccruals] = useState<PayrollAccrual[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
 
-  const [statusFilter, setStatusFilter] = useState<'all' | 'unpaid' | 'partially' | 'paid'>('unpaid')
+  const currentYear = new Date().getFullYear()
+  const [yearFilter, setYearFilter] = useState(String(currentYear))
+  const [monthFilter, setMonthFilter] = useState<string>('all')
+  const [quarterFilter, setQuarterFilter] = useState<string>('all')
   const [typeFilter, setTypeFilter] = useState<'all' | PayrollType>('all')
   const [employeeFilter, setEmployeeFilter] = useState<string>('all')
 
   const [paying, setPaying] = useState<PayrollAccrual | null>(null)
   const [payForm, setPayForm] = useState({ amount: '', paidAt: '', accountId: '', description: '' })
+  const [lastPayment, setLastPayment] = useState<{ employee: string; amount: number; date: string } | null>(null)
 
   const fmtMoney = (n: number) =>
     new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(n)
@@ -58,7 +65,7 @@ export function Payroll() {
   const load = useCallback(async () => {
     setLoading(true)
     const qs = new URLSearchParams({
-      status: statusFilter,
+      status: 'all',
       type: typeFilter,
       employeeId: employeeFilter
     })
@@ -75,7 +82,7 @@ export function Payroll() {
     setEmployees(payroll.employees ?? [])
     setAccounts((accountsData ?? []).map((a: any) => ({ id: a.id, name: a.name })))
     setLoading(false)
-  }, [employeeFilter, statusFilter, typeFilter])
+  }, [employeeFilter, typeFilter])
 
   useEffect(() => {
     load().catch(err => {
@@ -84,12 +91,92 @@ export function Payroll() {
     })
   }, [load])
 
+  // Фильтрация по периоду
+  const filteredAccruals = useMemo(() => {
+    return accruals.filter(a => {
+      const date = new Date(a.deal.dealDate || a.accruedAt)
+      const year = date.getFullYear()
+      const month = date.getMonth() + 1
+      const quarter = Math.ceil(month / 3)
+
+      if (yearFilter !== 'all' && year !== Number(yearFilter)) return false
+      if (monthFilter !== 'all' && month !== Number(monthFilter)) return false
+      if (quarterFilter !== 'all' && quarter !== Number(quarterFilter)) return false
+
+      return true
+    })
+  }, [accruals, yearFilter, monthFilter, quarterFilter])
+
+  // Группировка по сотрудникам
+  const employeeSummary = useMemo(() => {
+    const summary: Record<string, { name: string; type: string; accrued: number; paid: number; remaining: number }> = {}
+
+    filteredAccruals.forEach(a => {
+      if (!summary[a.employee.id]) {
+        summary[a.employee.id] = { name: a.employee.name, type: a.type, accrued: 0, paid: 0, remaining: 0 }
+      }
+      summary[a.employee.id].accrued += a.amount
+      summary[a.employee.id].paid += a.paid
+      summary[a.employee.id].remaining += a.remaining
+    })
+
+    return Object.entries(summary).map(([id, data]) => ({ id, ...data }))
+  }, [filteredAccruals])
+
+  // Средняя ЗП по месяцам
+  const monthlyAverageSalary = useMemo(() => {
+    const year = Number(yearFilter) || currentYear
+    const monthlyData: Record<string, { total: number; agents: Set<string> }> = {}
+
+    // Инициализируем месяцы
+    for (let m = 1; m <= 12; m++) {
+      const mk = `${year}-${String(m).padStart(2, '0')}`
+      monthlyData[mk] = { total: 0, agents: new Set() }
+    }
+
+    // Считаем только агентов
+    accruals.filter(a => a.type === 'AGENT').forEach(a => {
+      const date = new Date(a.deal.dealDate || a.accruedAt)
+      if (date.getFullYear() !== year) return
+      const mk = `${year}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      if (monthlyData[mk]) {
+        monthlyData[mk].total += a.amount
+        monthlyData[mk].agents.add(a.employee.id)
+      }
+    })
+
+    // Общее количество активных агентов за год
+    const allAgents = new Set<string>()
+    accruals.filter(a => a.type === 'AGENT').forEach(a => {
+      const date = new Date(a.deal.dealDate || a.accruedAt)
+      if (date.getFullYear() === year) allAgents.add(a.employee.id)
+    })
+    const totalAgents = allAgents.size || 1
+
+    const result = Object.entries(monthlyData).map(([mk, data]) => {
+      const [y, m] = mk.split('-').map(Number)
+      const agentCount = data.agents.size || totalAgents
+      return {
+        monthKey: mk,
+        month: MONTHS[m - 1] + ' ' + y,
+        totalAccrued: data.total,
+        agentCount: data.agents.size,
+        averageSalary: agentCount > 0 ? Math.round(data.total / agentCount) : 0
+      }
+    })
+
+    const yearTotal = result.reduce((s, m) => s + m.totalAccrued, 0)
+    const yearAverage = totalAgents > 0 ? Math.round(yearTotal / totalAgents / 12) : 0
+
+    return { months: result, yearTotal, totalAgents, yearAverage }
+  }, [accruals, yearFilter, currentYear])
+
   const totals = useMemo(() => {
-    const totalAccrued = accruals.reduce((s, a) => s + a.amount, 0)
-    const totalPaid = accruals.reduce((s, a) => s + a.paid, 0)
-    const totalRemaining = accruals.reduce((s, a) => s + a.remaining, 0)
+    const totalAccrued = filteredAccruals.reduce((s, a) => s + a.amount, 0)
+    const totalPaid = filteredAccruals.reduce((s, a) => s + a.paid, 0)
+    const totalRemaining = filteredAccruals.reduce((s, a) => s + a.remaining, 0)
     return { totalAccrued, totalPaid, totalRemaining }
-  }, [accruals])
+  }, [filteredAccruals])
 
   const statusBadge = (s: PayrollAccrual['derivedStatus']) => {
     if (s === 'paid') return { label: 'Выплачено', cls: 'bg-green-100 text-green-800' }
@@ -124,9 +211,100 @@ export function Payroll() {
       const data = await res.json().catch(() => null)
       throw new Error(data?.error || 'Не удалось создать выплату')
     }
+
+    // Сохраняем данные для документа
+    setLastPayment({
+      employee: paying.employee.name,
+      amount: parseFloat(payForm.amount) || 0,
+      date: payForm.paidAt
+    })
+
     setPaying(null)
     await load()
   }
+
+  const generatePaymentDocument = () => {
+    if (!lastPayment) return
+
+    const doc = `
+РАСХОДНЫЙ КАССОВЫЙ ОРДЕР
+
+Дата: ${fmtDate(lastPayment.date)}
+
+Выдать: ${lastPayment.employee}
+Сумма: ${fmtMoney(lastPayment.amount)}
+(${numberToWords(lastPayment.amount)})
+
+Основание: Выплата заработной платы
+
+Приложение: __________________________________
+
+Руководитель: ________________ / ____________ /
+
+Главный бухгалтер: ________________ / ____________ /
+
+Получил: ________________ / ${lastPayment.employee} /
+
+Дата: ${fmtDate(lastPayment.date)}
+    `.trim()
+
+    // Создаём и скачиваем файл
+    const blob = new Blob([doc], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `РКО_${lastPayment.employee.replace(/\s/g, '_')}_${lastPayment.date}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+    setLastPayment(null)
+  }
+
+  // Простая функция для суммы прописью
+  const numberToWords = (num: number): string => {
+    const units = ['', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять', 'десять',
+      'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать', 'пятнадцать', 'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать']
+    const tens = ['', '', 'двадцать', 'тридцать', 'сорок', 'пятьдесят', 'шестьдесят', 'семьдесят', 'восемьдесят', 'девяносто']
+    const hundreds = ['', 'сто', 'двести', 'триста', 'четыреста', 'пятьсот', 'шестьсот', 'семьсот', 'восемьсот', 'девятьсот']
+
+    if (num === 0) return 'ноль рублей'
+
+    const rubles = Math.floor(num)
+    let result = ''
+
+    if (rubles >= 1000000) {
+      const mill = Math.floor(rubles / 1000000)
+      result += units[mill] || mill.toString() + ' '
+      result += 'миллион '
+    }
+
+    if (rubles >= 1000) {
+      const thou = Math.floor((rubles % 1000000) / 1000)
+      if (thou > 0) {
+        if (thou >= 100) result += hundreds[Math.floor(thou / 100)] + ' '
+        if (thou % 100 >= 20) {
+          result += tens[Math.floor((thou % 100) / 10)] + ' '
+          if (thou % 10 > 0) result += (thou % 10 === 1 ? 'одна' : thou % 10 === 2 ? 'две' : units[thou % 10]) + ' '
+        } else if (thou % 100 > 0) {
+          result += (thou % 100 === 1 ? 'одна' : thou % 100 === 2 ? 'две' : units[thou % 100]) + ' '
+        }
+        result += 'тысяч '
+      }
+    }
+
+    const rem = rubles % 1000
+    if (rem >= 100) result += hundreds[Math.floor(rem / 100)] + ' '
+    if (rem % 100 >= 20) {
+      result += tens[Math.floor((rem % 100) / 10)] + ' '
+      if (rem % 10 > 0) result += units[rem % 10] + ' '
+    } else if (rem % 100 > 0) {
+      result += units[rem % 100] + ' '
+    }
+
+    result += 'рублей'
+    return result.trim()
+  }
+
+  const yearOptions = Array.from({ length: 5 }, (_, i) => String(currentYear - i))
 
   if (loading) {
     return (
@@ -141,63 +319,67 @@ export function Payroll() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Ведомость выплат</h2>
-          <p className="text-gray-500">Начисления по сделкам с датой сделки и частичные выплаты через казначейство</p>
+          <p className="text-gray-500">Начисления по сделкам с датой сделки и выплаты</p>
         </div>
-        <Button variant="outline" onClick={() => load().catch(err => alert(err.message))}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Обновить
-        </Button>
+        <div className="flex gap-2 items-center flex-wrap">
+          <Button variant="outline" onClick={() => load().catch(err => alert(err.message))}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Обновить
+          </Button>
+          {lastPayment && (
+            <Button onClick={generatePaymentDocument}>
+              <Download className="h-4 w-4 mr-2" />
+              Скачать РКО
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-600">Начислено</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{fmtMoney(totals.totalAccrued)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-600">Выплачено</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{fmtMoney(totals.totalPaid)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-gray-600">К выплате</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{fmtMoney(totals.totalRemaining)}</div>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* Фильтры */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-2">
           <CardTitle className="text-lg">Фильтры</CardTitle>
-          <CardDescription>Фильтрация по статусу выплаты, типу и сотруднику</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-4">
-          <Select value={statusFilter} onValueChange={v => setStatusFilter(v as any)}>
-            <SelectTrigger className="w-[220px]">
+          <Select value={yearFilter} onValueChange={v => { setYearFilter(v); setMonthFilter('all'); setQuarterFilter('all') }}>
+            <SelectTrigger className="w-[100px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="unpaid">К выплате</SelectItem>
-              <SelectItem value="partially">Частично</SelectItem>
-              <SelectItem value="paid">Выплачено</SelectItem>
               <SelectItem value="all">Все</SelectItem>
+              {yearOptions.map(y => (
+                <SelectItem key={y} value={y}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={monthFilter} onValueChange={v => { setMonthFilter(v); setQuarterFilter('all') }}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Месяц" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все месяцы</SelectItem>
+              {MONTHS.map((m, i) => (
+                <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={quarterFilter} onValueChange={v => { setQuarterFilter(v); setMonthFilter('all') }}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue placeholder="Квартал" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все кварталы</SelectItem>
+              <SelectItem value="1">Q1</SelectItem>
+              <SelectItem value="2">Q2</SelectItem>
+              <SelectItem value="3">Q3</SelectItem>
+              <SelectItem value="4">Q4</SelectItem>
             </SelectContent>
           </Select>
           <Select value={typeFilter} onValueChange={v => setTypeFilter(v as any)}>
-            <SelectTrigger className="w-[220px]">
+            <SelectTrigger className="w-[120px]">
               <SelectValue placeholder="Тип" />
             </SelectTrigger>
             <SelectContent>
@@ -207,7 +389,7 @@ export function Payroll() {
             </SelectContent>
           </Select>
           <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
-            <SelectTrigger className="w-[260px]">
+            <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Сотрудник" />
             </SelectTrigger>
             <SelectContent>
@@ -222,71 +404,279 @@ export function Payroll() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Начисления</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Сотрудник</TableHead>
-                <TableHead>Сделка</TableHead>
-                <TableHead>Дата сделки</TableHead>
-                <TableHead className="text-right">Начислено</TableHead>
-                <TableHead className="text-right">Выплачено</TableHead>
-                <TableHead className="text-right">Остаток</TableHead>
-                <TableHead>Статус</TableHead>
-                <TableHead className="w-[140px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {accruals.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                    Начисления не найдены
-                  </TableCell>
-                </TableRow>
-              ) : (
-                accruals.map(a => {
-                  const b = statusBadge(a.derivedStatus)
-                  return (
-                    <TableRow key={a.id}>
-                      <TableCell className="font-medium">
-                        {a.employee.name} <span className="text-gray-500">({a.type === 'AGENT' ? 'Агент' : 'РОП'})</span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{a.deal.client}</div>
-                        <div className="text-xs text-gray-500 max-w-[360px] truncate" title={a.deal.object}>
-                          {a.deal.object}
-                        </div>
-                      </TableCell>
-                      <TableCell>{fmtDate(a.deal.dealDate ?? a.accruedAt)}</TableCell>
-                      <TableCell className="text-right font-medium">{fmtMoney(a.amount)}</TableCell>
-                      <TableCell className="text-right">{fmtMoney(a.paid)}</TableCell>
-                      <TableCell className="text-right font-medium">{fmtMoney(a.remaining)}</TableCell>
-                      <TableCell>
-                        <Badge className={b.cls}>{b.label}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm" disabled={a.remaining <= 0} onClick={() => openPay(a)}>
-                          Выплатить
-                        </Button>
+      {/* Сводные карточки */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-blue-800">Начислено</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-900">{fmtMoney(totals.totalAccrued)}</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-green-800">Выплачено</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-900">{fmtMoney(totals.totalPaid)}</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-orange-800">К выплате</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-900">{fmtMoney(totals.totalRemaining)}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Вкладки */}
+      <Tabs defaultValue="accrued" className="space-y-4">
+        <TabsList className="flex w-full flex-wrap">
+          <TabsTrigger value="accrued">Начислено</TabsTrigger>
+          <TabsTrigger value="paid">Выплачено</TabsTrigger>
+          <TabsTrigger value="remaining">К выплате</TabsTrigger>
+          <TabsTrigger value="average">Средняя ЗП</TabsTrigger>
+        </TabsList>
+
+        {/* Таб 1: Начислено */}
+        <TabsContent value="accrued">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Начисления</CardTitle>
+              <CardDescription>Все начисления по сделкам</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Сотрудник</TableHead>
+                    <TableHead>Тип</TableHead>
+                    <TableHead className="text-right">Начислено</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {employeeSummary.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center py-8 text-gray-500">
+                        Нет данных
                       </TableCell>
                     </TableRow>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                  ) : (
+                    employeeSummary.map(e => (
+                      <TableRow key={e.id}>
+                        <TableCell className="font-medium">{e.name}</TableCell>
+                        <TableCell>{e.type === 'AGENT' ? 'Агент' : 'РОП'}</TableCell>
+                        <TableCell className="text-right font-medium">{fmtMoney(e.accrued)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  <TableRow className="bg-gray-50 font-bold">
+                    <TableCell colSpan={2}>Итого</TableCell>
+                    <TableCell className="text-right">{fmtMoney(totals.totalAccrued)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
+        {/* Таб 2: Выплачено */}
+        <TabsContent value="paid">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Выплачено</CardTitle>
+              <CardDescription>Фактические выплаты сотрудникам</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Сотрудник</TableHead>
+                    <TableHead>Тип</TableHead>
+                    <TableHead className="text-right">Выплачено</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {employeeSummary.filter(e => e.paid > 0).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center py-8 text-gray-500">
+                        Нет выплат
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    employeeSummary.filter(e => e.paid > 0).map(e => (
+                      <TableRow key={e.id}>
+                        <TableCell className="font-medium">{e.name}</TableCell>
+                        <TableCell>{e.type === 'AGENT' ? 'Агент' : 'РОП'}</TableCell>
+                        <TableCell className="text-right font-medium text-green-700">{fmtMoney(e.paid)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  <TableRow className="bg-gray-50 font-bold">
+                    <TableCell colSpan={2}>Итого</TableCell>
+                    <TableCell className="text-right text-green-700">{fmtMoney(totals.totalPaid)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Таб 3: К выплате */}
+        <TabsContent value="remaining">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">К выплате</CardTitle>
+              <CardDescription>Остаток к выплате по сотрудникам</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Сотрудник</TableHead>
+                    <TableHead>Тип</TableHead>
+                    <TableHead className="text-right">Начислено</TableHead>
+                    <TableHead className="text-right">Выплачено</TableHead>
+                    <TableHead className="text-right">К выплате</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {employeeSummary.filter(e => e.remaining > 0).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                        Все выплачено
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    employeeSummary.filter(e => e.remaining > 0).map(e => (
+                      <TableRow key={e.id}>
+                        <TableCell className="font-medium">{e.name}</TableCell>
+                        <TableCell>{e.type === 'AGENT' ? 'Агент' : 'РОП'}</TableCell>
+                        <TableCell className="text-right">{fmtMoney(e.accrued)}</TableCell>
+                        <TableCell className="text-right text-green-700">{fmtMoney(e.paid)}</TableCell>
+                        <TableCell className="text-right font-bold text-orange-700">{fmtMoney(e.remaining)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  <TableRow className="bg-gray-50 font-bold">
+                    <TableCell colSpan={2}>Итого</TableCell>
+                    <TableCell className="text-right">{fmtMoney(totals.totalAccrued)}</TableCell>
+                    <TableCell className="text-right text-green-700">{fmtMoney(totals.totalPaid)}</TableCell>
+                    <TableCell className="text-right text-orange-700">{fmtMoney(totals.totalRemaining)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {/* Детальный список начислений к выплате */}
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="text-lg">Детализация начислений к выплате</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Сотрудник</TableHead>
+                    <TableHead>Сделка</TableHead>
+                    <TableHead>Дата сделки</TableHead>
+                    <TableHead className="text-right">Начислено</TableHead>
+                    <TableHead className="text-right">Выплачено</TableHead>
+                    <TableHead className="text-right">Остаток</TableHead>
+                    <TableHead className="w-[120px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAccruals.filter(a => a.remaining > 0).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                        Нет начислений к выплате
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredAccruals.filter(a => a.remaining > 0).map(a => (
+                      <TableRow key={a.id}>
+                        <TableCell className="font-medium">
+                          {a.employee.name} <span className="text-gray-500">({a.type === 'AGENT' ? 'Агент' : 'РОП'})</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">{a.deal.client}</div>
+                          <div className="text-xs text-gray-500 max-w-[300px] truncate">{a.deal.object}</div>
+                        </TableCell>
+                        <TableCell>{fmtDate(a.deal.dealDate ?? a.accruedAt)}</TableCell>
+                        <TableCell className="text-right">{fmtMoney(a.amount)}</TableCell>
+                        <TableCell className="text-right">{fmtMoney(a.paid)}</TableCell>
+                        <TableCell className="text-right font-medium">{fmtMoney(a.remaining)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" onClick={() => openPay(a)}>
+                            Выплатить
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Таб 4: Средняя ЗП */}
+        <TabsContent value="average">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Средняя ЗП агентов</CardTitle>
+              <CardDescription>
+                Средняя ЗП = сумма начислений всех агентов / кол-во агентов.
+                За {yearFilter === 'all' ? 'все время' : yearFilter + ' год'}: всего <b>{monthlyAverageSalary.totalAgents}</b> агентов.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Месяц</TableHead>
+                    <TableHead className="text-right">Начислено всего</TableHead>
+                    <TableHead className="text-right">Кол-во агентов</TableHead>
+                    <TableHead className="text-right">Средняя ЗП</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {monthlyAverageSalary.months.map(m => (
+                    <TableRow key={m.monthKey}>
+                      <TableCell className="font-medium">{m.month}</TableCell>
+                      <TableCell className="text-right">{m.totalAccrued > 0 ? fmtMoney(m.totalAccrued) : '-'}</TableCell>
+                      <TableCell className="text-right">{m.agentCount || '-'}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {m.averageSalary > 0 ? fmtMoney(m.averageSalary) : '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="bg-gray-50 font-bold">
+                    <TableCell>Итого за год</TableCell>
+                    <TableCell className="text-right">{fmtMoney(monthlyAverageSalary.yearTotal)}</TableCell>
+                    <TableCell className="text-right">{monthlyAverageSalary.totalAgents} агентов</TableCell>
+                    <TableCell className="text-right">
+                      {fmtMoney(monthlyAverageSalary.yearAverage)} / мес
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Диалог выплаты */}
       <Dialog open={!!paying} onOpenChange={() => setPaying(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Выплата</DialogTitle>
-            <DialogDescription>Можно выплачивать частями. Выплата создаст операцию в казначействе.</DialogDescription>
+            <DialogDescription>Можно выплачивать частями. После создания будет доступна кнопка скачивания РКО.</DialogDescription>
           </DialogHeader>
           {paying && (
             <div className="space-y-4">
