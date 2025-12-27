@@ -10,13 +10,7 @@ function normalizeDealExpenses<T extends { brokerExpense?: number; lawyerExpense
   const brokerExpense = Number(deal.brokerExpense ?? 0)
   const lawyerExpense = Number(deal.lawyerExpense ?? 0)
   const referralExpense = Number(deal.referralExpense ?? 0)
-  let otherExpense = Number(deal.otherExpense ?? 0)
-  const externalExpenses = Number(deal.externalExpenses ?? 0)
-
-  const breakdownSum = brokerExpense + lawyerExpense + referralExpense + otherExpense
-  if (breakdownSum === 0 && externalExpenses !== 0) {
-    otherExpense = externalExpenses
-  }
+  const otherExpense = Number(deal.otherExpense ?? 0)
 
   const normalizedExternal = brokerExpense + lawyerExpense + referralExpense + otherExpense
   return { brokerExpense, lawyerExpense, referralExpense, otherExpense, externalExpenses: normalizedExternal }
