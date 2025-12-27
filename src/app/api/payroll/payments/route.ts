@@ -40,7 +40,16 @@ export async function POST(request: NextRequest) {
     })
     if (!accrual) return NextResponse.json({ error: 'Accrual not found' }, { status: 404 })
 
-    const alreadyPaid = accrual.payments.reduce((s, p) => s + p.amount, 0)
+    // Защита от дублирования: проверяем есть ли выплата с такой же суммой за последние 5 секунд
+    const fiveSecondsAgo = new Date(Date.now() - 5000)
+    const recentDuplicate = accrual.payments.find((p: { amount: number; createdAt: Date }) =>
+      p.amount === amount && new Date(p.createdAt) > fiveSecondsAgo
+    )
+    if (recentDuplicate) {
+      return NextResponse.json({ error: 'Duplicate payment detected. Please wait and try again.' }, { status: 409 })
+    }
+
+    const alreadyPaid = accrual.payments.reduce((s: number, p: { amount: number }) => s + p.amount, 0)
     const remaining = accrual.amount - alreadyPaid
     if (remaining <= 0) return NextResponse.json({ error: 'Accrual already fully paid' }, { status: 409 })
     if (amount > remaining + 0.00001) {
@@ -52,7 +61,7 @@ export async function POST(request: NextRequest) {
       description ??
       `Выплата ${accrual.type === 'AGENT' ? 'агенту' : 'РОПу'}: ${accrual.employee.name} · Сделка: ${accrual.deal.client}`
 
-      const created = await db.$transaction(async tx => {
+    const created = await db.$transaction(async tx => {
       const cashFlow = await tx.cashFlow.create({
         data: {
           type: 'EXPENSE',

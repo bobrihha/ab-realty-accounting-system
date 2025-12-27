@@ -56,6 +56,7 @@ export function Payroll() {
   const [paying, setPaying] = useState<PayrollAccrual | null>(null)
   const [payForm, setPayForm] = useState({ amount: '', paidAt: '', accountId: '', description: '' })
   const [lastPayment, setLastPayment] = useState<{ employee: string; amount: number; date: string } | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const fmtMoney = (n: number) =>
     new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(n)
@@ -195,32 +196,37 @@ export function Payroll() {
   }
 
   const submitPay = async () => {
-    if (!paying) return
-    const res = await fetch('/api/payroll/payments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        accrualId: paying.id,
-        amount: parseFloat(payForm.amount) || 0,
-        paidAt: payForm.paidAt || undefined,
-        accountId: payForm.accountId,
-        description: payForm.description || undefined
+    if (!paying || submitting) return
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/payroll/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accrualId: paying.id,
+          amount: parseFloat(payForm.amount) || 0,
+          paidAt: payForm.paidAt || undefined,
+          accountId: payForm.accountId,
+          description: payForm.description || undefined
+        })
       })
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => null)
-      throw new Error(data?.error || 'Не удалось создать выплату')
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Не удалось создать выплату')
+      }
+
+      // Сохраняем данные для документа
+      setLastPayment({
+        employee: paying.employee.name,
+        amount: parseFloat(payForm.amount) || 0,
+        date: payForm.paidAt
+      })
+
+      setPaying(null)
+      await load()
+    } finally {
+      setSubmitting(false)
     }
-
-    // Сохраняем данные для документа
-    setLastPayment({
-      employee: paying.employee.name,
-      amount: parseFloat(payForm.amount) || 0,
-      date: payForm.paidAt
-    })
-
-    setPaying(null)
-    await load()
   }
 
   const generatePaymentDocument = () => {
@@ -720,9 +726,9 @@ export function Payroll() {
                 </Button>
                 <Button
                   onClick={() => submitPay().catch(err => alert(err.message))}
-                  disabled={!payForm.accountId || (parseFloat(payForm.amount) || 0) <= 0}
+                  disabled={submitting || !payForm.accountId || (parseFloat(payForm.amount) || 0) <= 0}
                 >
-                  Создать выплату
+                  {submitting ? 'Создание...' : 'Создать выплату'}
                 </Button>
               </div>
             </div>
