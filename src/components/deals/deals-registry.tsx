@@ -150,15 +150,20 @@ export function DealsRegistry() {
         (legalServicesFilter === 'no' && !deal.legalServices)
       const matchesContractType = contractTypeFilter === 'all' || deal.contractType === contractTypeFilter
 
-      // Фильтр по году/месяцу (по дате задатка)
+      // Фильтр по году/месяцу (по дате сделки)
       let matchesPeriod = true
       if (yearFilter !== 'all' || monthFilter !== 'all') {
-        const date = new Date(deal.depositDate)
-        if (yearFilter !== 'all' && date.getFullYear() !== Number(yearFilter)) {
+        // Если нет даты сделки — не показываем при фильтрации по периоду
+        if (!deal.dealDate) {
           matchesPeriod = false
-        }
-        if (monthFilter !== 'all' && date.getMonth() + 1 !== Number(monthFilter)) {
-          matchesPeriod = false
+        } else {
+          const date = new Date(deal.dealDate)
+          if (yearFilter !== 'all' && date.getFullYear() !== Number(yearFilter)) {
+            matchesPeriod = false
+          }
+          if (monthFilter !== 'all' && date.getMonth() + 1 !== Number(monthFilter)) {
+            matchesPeriod = false
+          }
         }
       }
 
