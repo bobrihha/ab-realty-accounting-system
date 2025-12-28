@@ -135,18 +135,18 @@ async function computeForecast(months: number) {
   const now = new Date()
   const items: any[] = []
 
+  // "Ожидаю приход" — сумма netProfit всех активных сделок (кроме CLOSED и CANCELLED)
+  // Эта сумма одинакова для всех месяцев, т.к. не привязана к плановой дате
+  const expectedTotal = await db.deal.aggregate({
+    where: { status: { notIn: ['CLOSED', 'CANCELLED'] } },
+    _sum: { netProfit: true }
+  })
+  const expectedIncome = expectedTotal._sum.netProfit ?? 0
+
   for (let i = 0; i < months; i++) {
     const date = new Date(now.getFullYear(), now.getMonth() + i, 1)
     const from = startOfMonth(date)
     const to = endOfMonth(date)
-
-    const expectedDeals = await db.deal.aggregate({
-      where: {
-        plannedCloseDate: { gte: from, lte: to },
-        status: { in: ['REGISTRATION', 'WAITING_INVOICE', 'WAITING_PAYMENT'] }
-      },
-      _sum: { netProfit: true }
-    })
 
     const plannedExpenses = await db.cashFlow.aggregate({
       // Opening balance is taken from current account balances (includes already paid operations),
@@ -155,9 +155,12 @@ async function computeForecast(months: number) {
       _sum: { amount: true }
     })
 
-    const expectedIncome = expectedDeals._sum.netProfit ?? 0
     const plannedExpenseSum = plannedExpenses._sum.amount ?? 0
-    const closingBalance = openingBalance + expectedIncome - plannedExpenseSum
+
+    // Для первого месяца expectedIncome = полная сумма ожидаемого прихода
+    // Для последующих месяцев expectedIncome = 0, т.к. уже учтён в первом месяце
+    const monthExpectedIncome = i === 0 ? expectedIncome : 0
+    const closingBalance = openingBalance + monthExpectedIncome - plannedExpenseSum
 
     const status = closingBalance < 0 ? 'critical' : 'positive'
 
@@ -165,7 +168,7 @@ async function computeForecast(months: number) {
       month: formatMonthLabel(monthKey(date)),
       monthKey: monthKey(date),
       openingBalance,
-      expectedIncome,
+      expectedIncome: monthExpectedIncome,
       plannedExpenses: plannedExpenseSum,
       closingBalance,
       status
