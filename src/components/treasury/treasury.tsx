@@ -53,6 +53,16 @@ type TreasuryKPI = {
   expectedOnPayment: { value: number; count: number }
 }
 
+type ExpenseDetail = {
+  id: string
+  amount: number
+  category: string
+  description: string | null
+  plannedDate: string
+  isRecurring: boolean
+  source: 'recurring' | 'planned'
+}
+
 // Фиксированный список категорий расходов
 const EXPENSE_CATEGORIES = [
   'Аренда',
@@ -85,6 +95,12 @@ export function Treasury() {
   const [editingCashFlow, setEditingCashFlow] = useState<CashFlowItem | null>(null)
   const [isEditCashFlowDialogOpen, setIsEditCashFlowDialogOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+
+  // Диалог с детализацией расходов
+  const [isExpenseDetailsOpen, setIsExpenseDetailsOpen] = useState(false)
+  const [expenseDetailsMonth, setExpenseDetailsMonth] = useState<{ monthKey: string; month: string } | null>(null)
+  const [expenseDetails, setExpenseDetails] = useState<ExpenseDetail[]>([])
+  const [expenseDetailsLoading, setExpenseDetailsLoading] = useState(false)
 
   const [newAccount, setNewAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
   const [editAccount, setEditAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
@@ -151,6 +167,24 @@ export function Treasury() {
 
   const totalBalance = useMemo(() => accounts.reduce((sum, a) => sum + (a.balance || 0), 0), [accounts])
   const hasCashGap = useMemo(() => forecast.some(f => f.status === 'critical'), [forecast])
+
+  const openExpenseDetails = async (monthKey: string, month: string) => {
+    setExpenseDetailsMonth({ monthKey, month })
+    setExpenseDetails([])
+    setIsExpenseDetailsOpen(true)
+    setExpenseDetailsLoading(true)
+    try {
+      const res = await fetch(`/api/treasury/expenses?monthKey=${encodeURIComponent(monthKey)}`, { cache: 'no-store' })
+      if (res.ok) {
+        const data = await res.json()
+        setExpenseDetails(data.expenses ?? [])
+      }
+    } catch (e) {
+      console.error('Failed to load expense details', e)
+    } finally {
+      setExpenseDetailsLoading(false)
+    }
+  }
 
   // Аналитика расходов по категориям и месяцам
   const expenseAnalytics = useMemo(() => {
@@ -361,478 +395,693 @@ export function Treasury() {
   }
 
   return (
-    <div className="space-y-6">
-      {error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Казначейство</h2>
-          <p className="text-gray-500">Счета, операции и прогноз кассовых разрывов</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => load().catch(err => alert(err.message))}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Обновить
-          </Button>
+    <>
+      <div className="space-y-6">
+        {error && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Казначейство</h2>
+            <p className="text-gray-500">Счета, операции и прогноз кассовых разрывов</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => load().catch(err => alert(err.message))}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Обновить
+            </Button>
 
-          <Dialog open={isAccountDialogOpen} onOpenChange={setIsAccountDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Счет
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Добавить счет</DialogTitle>
-                <DialogDescription>Остаток вводится вручную</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>Название</Label>
-                  <Input value={newAccount.name} onChange={e => setNewAccount(p => ({ ...p, name: e.target.value }))} />
+            <Dialog open={isAccountDialogOpen} onOpenChange={setIsAccountDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Счет
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Добавить счет</DialogTitle>
+                  <DialogDescription>Остаток вводится вручную</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label>Название</Label>
+                    <Input value={newAccount.name} onChange={e => setNewAccount(p => ({ ...p, name: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label>Остаток</Label>
+                    <Input value={newAccount.balance} type="number" onChange={e => setNewAccount(p => ({ ...p, balance: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label>Тип</Label>
+                    <select
+                      className="w-full border rounded-md p-2"
+                      value={newAccount.type}
+                      onChange={e => setNewAccount(p => ({ ...p, type: e.target.value as AccountType }))}
+                    >
+                      <option value="BANK">Банк</option>
+                      <option value="CASH">Наличные</option>
+                      <option value="DIGITAL">Электронный</option>
+                    </select>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setIsAccountDialogOpen(false)}>
+                      Отмена
+                    </Button>
+                    <Button onClick={() => handleAddAccount().catch(err => alert(err.message))}>Добавить</Button>
+                  </div>
                 </div>
-                <div>
-                  <Label>Остаток</Label>
-                  <Input value={newAccount.balance} type="number" onChange={e => setNewAccount(p => ({ ...p, balance: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>Тип</Label>
-                  <select
-                    className="w-full border rounded-md p-2"
-                    value={newAccount.type}
-                    onChange={e => setNewAccount(p => ({ ...p, type: e.target.value as AccountType }))}
-                  >
-                    <option value="BANK">Банк</option>
-                    <option value="CASH">Наличные</option>
-                    <option value="DIGITAL">Электронный</option>
-                  </select>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsAccountDialogOpen(false)}>
-                    Отмена
-                  </Button>
-                  <Button onClick={() => handleAddAccount().catch(err => alert(err.message))}>Добавить</Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
 
-          <Dialog open={isCashFlowDialogOpen} onOpenChange={setIsCashFlowDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Операция
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Добавить операцию</DialogTitle>
-                <DialogDescription>План/факт фиксируются отдельными датами</DialogDescription>
-              </DialogHeader>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Тип</Label>
-                  <select
-                    className="w-full border rounded-md p-2"
-                    value={newCashFlow.type}
-                    onChange={e => setNewCashFlow(p => ({ ...p, type: e.target.value as CashFlowType }))}
-                  >
-                    <option value="INCOME">Приход</option>
-                    <option value="EXPENSE">Расход</option>
-                  </select>
-                </div>
-                <div>
-                  <Label>Сумма</Label>
-                  <Input
-                    value={newCashFlow.amount}
-                    type="number"
-                    onChange={e => setNewCashFlow(p => ({ ...p, amount: e.target.value }))}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label>Категория</Label>
-                  <select
-                    className="w-full border rounded-md p-2"
-                    value={newCashFlow.category}
-                    onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))}
-                  >
-                    <option value="">Выберите категорию</option>
-                    {EXPENSE_CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>Дата (план)</Label>
-                  <Input
-                    value={newCashFlow.plannedDate}
-                    type="date"
-                    onChange={e => setNewCashFlow(p => ({ ...p, plannedDate: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label>Статус</Label>
-                  <select
-                    className="w-full border rounded-md p-2"
-                    value={newCashFlow.status}
-                    onChange={e => setNewCashFlow(p => ({ ...p, status: e.target.value as PaymentStatus }))}
-                  >
-                    <option value="PLANNED">План</option>
-                    <option value="PAID">Факт (оплачено)</option>
-                  </select>
-                </div>
-                {newCashFlow.status === 'PAID' && (
-                  <>
-                    <div>
-                      <Label>Дата (факт)</Label>
-                      <Input
-                        value={newCashFlow.actualDate}
-                        type="date"
-                        onChange={e => setNewCashFlow(p => ({ ...p, actualDate: e.target.value }))}
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Label>Счет</Label>
-                      <select
-                        className="w-full border rounded-md p-2"
-                        value={newCashFlow.accountId}
-                        onChange={e => setNewCashFlow(p => ({ ...p, accountId: e.target.value }))}
-                      >
-                        <option value="">Выберите счет</option>
-                        {accounts.map(a => (
-                          <option key={a.id} value={a.id}>
-                            {a.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
-                <div className="col-span-2">
-                  <Label>Описание</Label>
-                  <Input value={newCashFlow.description} onChange={e => setNewCashFlow(p => ({ ...p, description: e.target.value }))} />
-                </div>
-                {newCashFlow.type === 'EXPENSE' && (
-                  <div className="col-span-2 flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="isRecurring"
-                      checked={newCashFlow.isRecurring}
-                      onChange={e => setNewCashFlow(p => ({ ...p, isRecurring: e.target.checked }))}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            <Dialog open={isCashFlowDialogOpen} onOpenChange={setIsCashFlowDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Операция
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Добавить операцию</DialogTitle>
+                  <DialogDescription>План/факт фиксируются отдельными датами</DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Тип</Label>
+                    <select
+                      className="w-full border rounded-md p-2"
+                      value={newCashFlow.type}
+                      onChange={e => setNewCashFlow(p => ({ ...p, type: e.target.value as CashFlowType }))}
+                    >
+                      <option value="INCOME">Приход</option>
+                      <option value="EXPENSE">Расход</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Сумма</Label>
+                    <Input
+                      value={newCashFlow.amount}
+                      type="number"
+                      onChange={e => setNewCashFlow(p => ({ ...p, amount: e.target.value }))}
                     />
-                    <Label htmlFor="isRecurring" className="cursor-pointer">Повторяющийся расход (каждый месяц)</Label>
                   </div>
-                )}
-                <div className="col-span-2 flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsCashFlowDialogOpen(false)}>
-                    Отмена
-                  </Button>
-                  <Button onClick={() => handleAddCashFlow().catch(err => alert(err.message))}>Добавить</Button>
+                  <div className="col-span-2">
+                    <Label>Категория</Label>
+                    <select
+                      className="w-full border rounded-md p-2"
+                      value={newCashFlow.category}
+                      onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))}
+                    >
+                      <option value="">Выберите категорию</option>
+                      {EXPENSE_CATEGORIES.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Дата (план)</Label>
+                    <Input
+                      value={newCashFlow.plannedDate}
+                      type="date"
+                      onChange={e => setNewCashFlow(p => ({ ...p, plannedDate: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label>Статус</Label>
+                    <select
+                      className="w-full border rounded-md p-2"
+                      value={newCashFlow.status}
+                      onChange={e => setNewCashFlow(p => ({ ...p, status: e.target.value as PaymentStatus }))}
+                    >
+                      <option value="PLANNED">План</option>
+                      <option value="PAID">Факт (оплачено)</option>
+                    </select>
+                  </div>
+                  {newCashFlow.status === 'PAID' && (
+                    <>
+                      <div>
+                        <Label>Дата (факт)</Label>
+                        <Input
+                          value={newCashFlow.actualDate}
+                          type="date"
+                          onChange={e => setNewCashFlow(p => ({ ...p, actualDate: e.target.value }))}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Label>Счет</Label>
+                        <select
+                          className="w-full border rounded-md p-2"
+                          value={newCashFlow.accountId}
+                          onChange={e => setNewCashFlow(p => ({ ...p, accountId: e.target.value }))}
+                        >
+                          <option value="">Выберите счет</option>
+                          {accounts.map(a => (
+                            <option key={a.id} value={a.id}>
+                              {a.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+                  <div className="col-span-2">
+                    <Label>Описание</Label>
+                    <Input value={newCashFlow.description} onChange={e => setNewCashFlow(p => ({ ...p, description: e.target.value }))} />
+                  </div>
+                  {newCashFlow.type === 'EXPENSE' && (
+                    <div className="col-span-2 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="isRecurring"
+                        checked={newCashFlow.isRecurring}
+                        onChange={e => setNewCashFlow(p => ({ ...p, isRecurring: e.target.checked }))}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <Label htmlFor="isRecurring" className="cursor-pointer">Повторяющийся расход (каждый месяц)</Label>
+                    </div>
+                  )}
+                  <div className="col-span-2 flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setIsCashFlowDialogOpen(false)}>
+                      Отмена
+                    </Button>
+                    <Button onClick={() => handleAddCashFlow().catch(err => alert(err.message))}>Добавить</Button>
+                  </div>
                 </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
-      </div>
 
-      {hasCashGap && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>Обнаружен кассовый разрыв (отрицательный прогноз баланса).</AlertDescription>
-        </Alert>
-      )}
+        {hasCashGap && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>Обнаружен кассовый разрыв (отрицательный прогноз баланса).</AlertDescription>
+          </Alert>
+        )}
 
-      {/* Treasury KPI Cards */}
-      {treasuryKPI && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-blue-800 flex items-center gap-2">
-                <DollarSign className="h-4 w-4" />
-                Ожидаю итого
-              </CardTitle>
-              <CardDescription className="text-blue-600">Чистая прибыль по активным сделкам</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-900">
-                {formatCurrency(treasuryKPI.expectedTotal.value)}
-              </div>
-              <p className="text-xs text-blue-600 mt-1">
-                {treasuryKPI.expectedTotal.count} сделок
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-orange-800 flex items-center gap-2">
-                <DollarSign className="h-4 w-4" />
-                Ожидаю в задатках
-              </CardTitle>
-              <CardDescription className="text-orange-600">Чистая прибыль в статусе задатка</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-900">
-                {formatCurrency(treasuryKPI.expectedDeposits.value)}
-              </div>
-              <p className="text-xs text-orange-600 mt-1">
-                {treasuryKPI.expectedDeposits.count} сделок
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-green-800 flex items-center gap-2">
-                <DollarSign className="h-4 w-4" />
-                Ожидаю на оплате
-              </CardTitle>
-              <CardDescription className="text-green-600">Регистрация, ждём счёт, на оплате</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-900">
-                {formatCurrency(treasuryKPI.expectedOnPayment.value)}
-              </div>
-              <p className="text-xs text-green-600 mt-1">
-                {treasuryKPI.expectedOnPayment.count} сделок
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <Dialog open={isEditCashFlowDialogOpen} onOpenChange={setIsEditCashFlowDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Редактировать операцию</DialogTitle>
-            <DialogDescription>При изменении факта баланс счета будет скорректирован</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Тип</Label>
-              <select
-                className="w-full border rounded-md p-2"
-                value={newCashFlow.type}
-                onChange={e => setNewCashFlow(p => ({ ...p, type: e.target.value as CashFlowType }))}
-              >
-                <option value="INCOME">Приход</option>
-                <option value="EXPENSE">Расход</option>
-              </select>
-            </div>
-            <div>
-              <Label>Сумма</Label>
-              <Input value={newCashFlow.amount} type="number" onChange={e => setNewCashFlow(p => ({ ...p, amount: e.target.value }))} />
-            </div>
-            <div className="col-span-2">
-              <Label>Категория</Label>
-              <select
-                className="w-full border rounded-md p-2"
-                value={newCashFlow.category}
-                onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))}
-              >
-                <option value="">Выберите категорию</option>
-                {EXPENSE_CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label>Дата (план)</Label>
-              <Input
-                value={newCashFlow.plannedDate}
-                type="date"
-                onChange={e => setNewCashFlow(p => ({ ...p, plannedDate: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Статус</Label>
-              <select
-                className="w-full border rounded-md p-2"
-                value={newCashFlow.status}
-                onChange={e => setNewCashFlow(p => ({ ...p, status: e.target.value as PaymentStatus }))}
-              >
-                <option value="PLANNED">План</option>
-                <option value="PAID">Факт (оплачено)</option>
-              </select>
-            </div>
-            {newCashFlow.status === 'PAID' && (
-              <>
-                <div>
-                  <Label>Дата (факт)</Label>
-                  <Input
-                    value={newCashFlow.actualDate}
-                    type="date"
-                    onChange={e => setNewCashFlow(p => ({ ...p, actualDate: e.target.value }))}
-                  />
+        {/* Treasury KPI Cards */}
+        {treasuryKPI && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-blue-800 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Ожидаю итого
+                </CardTitle>
+                <CardDescription className="text-blue-600">Чистая прибыль по активным сделкам</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-900">
+                  {formatCurrency(treasuryKPI.expectedTotal.value)}
                 </div>
-                <div className="col-span-2">
-                  <Label>Счет</Label>
-                  <select
-                    className="w-full border rounded-md p-2"
-                    value={newCashFlow.accountId}
-                    onChange={e => setNewCashFlow(p => ({ ...p, accountId: e.target.value }))}
-                  >
-                    <option value="">Выберите счет</option>
-                    {accounts.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
+                <p className="text-xs text-blue-600 mt-1">
+                  {treasuryKPI.expectedTotal.count} сделок
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-orange-800 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Ожидаю в задатках
+                </CardTitle>
+                <CardDescription className="text-orange-600">Чистая прибыль в статусе задатка</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-orange-900">
+                  {formatCurrency(treasuryKPI.expectedDeposits.value)}
                 </div>
-              </>
-            )}
-            <div className="col-span-2">
-              <Label>Описание</Label>
-              <Input value={newCashFlow.description} onChange={e => setNewCashFlow(p => ({ ...p, description: e.target.value }))} />
-            </div>
-            {newCashFlow.type === 'EXPENSE' && (
-              <div className="col-span-2 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isRecurringEdit"
-                  checked={newCashFlow.isRecurring}
-                  onChange={e => setNewCashFlow(p => ({ ...p, isRecurring: e.target.checked }))}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                <p className="text-xs text-orange-600 mt-1">
+                  {treasuryKPI.expectedDeposits.count} сделок
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-green-800 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Ожидаю на оплате
+                </CardTitle>
+                <CardDescription className="text-green-600">Регистрация, ждём счёт, на оплате</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-900">
+                  {formatCurrency(treasuryKPI.expectedOnPayment.value)}
+                </div>
+                <p className="text-xs text-green-600 mt-1">
+                  {treasuryKPI.expectedOnPayment.count} сделок
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        <Dialog open={isEditCashFlowDialogOpen} onOpenChange={setIsEditCashFlowDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Редактировать операцию</DialogTitle>
+              <DialogDescription>При изменении факта баланс счета будет скорректирован</DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Тип</Label>
+                <select
+                  className="w-full border rounded-md p-2"
+                  value={newCashFlow.type}
+                  onChange={e => setNewCashFlow(p => ({ ...p, type: e.target.value as CashFlowType }))}
+                >
+                  <option value="INCOME">Приход</option>
+                  <option value="EXPENSE">Расход</option>
+                </select>
+              </div>
+              <div>
+                <Label>Сумма</Label>
+                <Input value={newCashFlow.amount} type="number" onChange={e => setNewCashFlow(p => ({ ...p, amount: e.target.value }))} />
+              </div>
+              <div className="col-span-2">
+                <Label>Категория</Label>
+                <select
+                  className="w-full border rounded-md p-2"
+                  value={newCashFlow.category}
+                  onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))}
+                >
+                  <option value="">Выберите категорию</option>
+                  {EXPENSE_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label>Дата (план)</Label>
+                <Input
+                  value={newCashFlow.plannedDate}
+                  type="date"
+                  onChange={e => setNewCashFlow(p => ({ ...p, plannedDate: e.target.value }))}
                 />
-                <Label htmlFor="isRecurringEdit" className="cursor-pointer">Повторяющийся расход (каждый месяц)</Label>
               </div>
-            )}
-            <div className="col-span-2 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsEditCashFlowDialogOpen(false)}>
-                Отмена
-              </Button>
-              <Button onClick={() => handleUpdateCashFlow().catch(err => alert(err.message))}>Сохранить</Button>
+              <div>
+                <Label>Статус</Label>
+                <select
+                  className="w-full border rounded-md p-2"
+                  value={newCashFlow.status}
+                  onChange={e => setNewCashFlow(p => ({ ...p, status: e.target.value as PaymentStatus }))}
+                >
+                  <option value="PLANNED">План</option>
+                  <option value="PAID">Факт (оплачено)</option>
+                </select>
+              </div>
+              {newCashFlow.status === 'PAID' && (
+                <>
+                  <div>
+                    <Label>Дата (факт)</Label>
+                    <Input
+                      value={newCashFlow.actualDate}
+                      type="date"
+                      onChange={e => setNewCashFlow(p => ({ ...p, actualDate: e.target.value }))}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Label>Счет</Label>
+                    <select
+                      className="w-full border rounded-md p-2"
+                      value={newCashFlow.accountId}
+                      onChange={e => setNewCashFlow(p => ({ ...p, accountId: e.target.value }))}
+                    >
+                      <option value="">Выберите счет</option>
+                      {accounts.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+              <div className="col-span-2">
+                <Label>Описание</Label>
+                <Input value={newCashFlow.description} onChange={e => setNewCashFlow(p => ({ ...p, description: e.target.value }))} />
+              </div>
+              {newCashFlow.type === 'EXPENSE' && (
+                <div className="col-span-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isRecurringEdit"
+                    checked={newCashFlow.isRecurring}
+                    onChange={e => setNewCashFlow(p => ({ ...p, isRecurring: e.target.checked }))}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <Label htmlFor="isRecurringEdit" className="cursor-pointer">Повторяющийся расход (каждый месяц)</Label>
+                </div>
+              )}
+              <div className="col-span-2 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsEditCashFlowDialogOpen(false)}>
+                  Отмена
+                </Button>
+                <Button onClick={() => handleUpdateCashFlow().catch(err => alert(err.message))}>Сохранить</Button>
+              </div>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
 
-      <Dialog open={isEditAccountDialogOpen} onOpenChange={setIsEditAccountDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Редактировать счет</DialogTitle>
-            <DialogDescription>Изменение остатка перезапишет текущее значение баланса счета</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Название</Label>
-              <Input value={editAccount.name} onChange={e => setEditAccount(p => ({ ...p, name: e.target.value }))} />
+        <Dialog open={isEditAccountDialogOpen} onOpenChange={setIsEditAccountDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Редактировать счет</DialogTitle>
+              <DialogDescription>Изменение остатка перезапишет текущее значение баланса счета</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Название</Label>
+                <Input value={editAccount.name} onChange={e => setEditAccount(p => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div>
+                <Label>Остаток</Label>
+                <Input
+                  value={editAccount.balance}
+                  type="number"
+                  onChange={e => setEditAccount(p => ({ ...p, balance: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label>Тип</Label>
+                <select
+                  className="w-full border rounded-md p-2"
+                  value={editAccount.type}
+                  onChange={e => setEditAccount(p => ({ ...p, type: e.target.value as AccountType }))}
+                >
+                  <option value="BANK">Банк</option>
+                  <option value="CASH">Наличные</option>
+                  <option value="DIGITAL">Электронный</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsEditAccountDialogOpen(false)}>
+                  Отмена
+                </Button>
+                <Button onClick={() => handleUpdateAccount().catch(err => alert(err.message))}>Сохранить</Button>
+              </div>
             </div>
-            <div>
-              <Label>Остаток</Label>
-              <Input
-                value={editAccount.balance}
-                type="number"
-                onChange={e => setEditAccount(p => ({ ...p, balance: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Тип</Label>
-              <select
-                className="w-full border rounded-md p-2"
-                value={editAccount.type}
-                onChange={e => setEditAccount(p => ({ ...p, type: e.target.value as AccountType }))}
-              >
-                <option value="BANK">Банк</option>
-                <option value="CASH">Наличные</option>
-                <option value="DIGITAL">Электронный</option>
-              </select>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsEditAccountDialogOpen(false)}>
-                Отмена
-              </Button>
-              <Button onClick={() => handleUpdateAccount().catch(err => alert(err.message))}>Сохранить</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MetricHelp
+                  title="Общий остаток"
+                  description="Что это за сумма"
+                  trigger={<Wallet className="h-5 w-5" />}
+                  summary="Сколько денег сейчас на всех счетах."
+                  details={
+                    <div className="space-y-2">
+                      <div className="font-medium">Как считается</div>
+                      <div className="text-muted-foreground">
+                        Это сумма остатков по всем счетам (банк/наличные/электронные).
+                      </div>
+                      <div className="text-muted-foreground">
+                        Баланс счета меняется только по операциям со статусом «Факт (оплачено)».
+                      </div>
+                    </div>
+                  }
+                />
+                Общий остаток
+              </CardTitle>
+              <CardDescription>Сумма остатков по счетам</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{formatCurrency(totalBalance)}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MetricHelp
+                  title="Счета"
+                  description="Что здесь важно"
+                  trigger={<TrendingUp className="h-5 w-5" />}
+                  summary="Здесь хранится текущий остаток денег по каждому счету."
+                  details={
+                    <div className="space-y-2">
+                      <div className="font-medium">Как это работает</div>
+                      <div className="text-muted-foreground">
+                        Остаток по счету можно задать вручную, а дальше он автоматически меняется, когда вы отмечаете операции как «Факт (оплачено)».
+                      </div>
+                      <div className="text-muted-foreground">
+                        Плановые операции («План») не списывают деньги со счета — они нужны для прогноза.
+                      </div>
+                    </div>
+                  }
+                />
+                Счета
+              </CardTitle>
+              <CardDescription>Остатки вводятся вручную (текущее)</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Название</TableHead>
+                    <TableHead>Тип</TableHead>
+                    <TableHead className="text-right">Остаток</TableHead>
+                    <TableHead className="w-[120px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {accounts.map(a => (
+                    <TableRow key={a.id}>
+                      <TableCell className="font-medium">{a.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{accountTypeLabel[a.type]}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(a.balance)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => openEditAccount(a)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteAccount(a.id).catch(err => alert(err.message))}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <MetricHelp
-                title="Общий остаток"
-                description="Что это за сумма"
-                trigger={<Wallet className="h-5 w-5" />}
-                summary="Сколько денег сейчас на всех счетах."
-                details={
-                  <div className="space-y-2">
-                    <div className="font-medium">Как считается</div>
-                    <div className="text-muted-foreground">
-                      Это сумма остатков по всем счетам (банк/наличные/электронные).
-                    </div>
-                    <div className="text-muted-foreground">
-                      Баланс счета меняется только по операциям со статусом «Факт (оплачено)».
-                    </div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-lg">Платежный календарь (прогноз)</CardTitle>
+            <MetricHelp
+              title="Платежный календарь (прогноз)"
+              description="Как считаются цифры"
+              trigger={<CircleHelp className="h-5 w-5 text-gray-500" />}
+              summary="Показывает, хватит ли денег с учетом ожидаемых поступлений и плановых расходов."
+              details={
+                <div className="space-y-2">
+                  <div className="font-medium">Открытие</div>
+                  <div className="text-muted-foreground">
+                    Это текущие деньги на счетах на начало месяца (берется из «Счета»).
                   </div>
-                }
-              />
-              Общий остаток
-            </CardTitle>
-            <CardDescription>Сумма остатков по счетам</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{formatCurrency(totalBalance)}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <MetricHelp
-                title="Счета"
-                description="Что здесь важно"
-                trigger={<TrendingUp className="h-5 w-5" />}
-                summary="Здесь хранится текущий остаток денег по каждому счету."
-                details={
-                  <div className="space-y-2">
-                    <div className="font-medium">Как это работает</div>
-                    <div className="text-muted-foreground">
-                      Остаток по счету можно задать вручную, а дальше он автоматически меняется, когда вы отмечаете операции как «Факт (оплачено)».
-                    </div>
-                    <div className="text-muted-foreground">
-                      Плановые операции («План») не списывают деньги со счета — они нужны для прогноза.
-                    </div>
+                  <div className="font-medium">Ожидаю приход</div>
+                  <div className="text-muted-foreground">
+                    Прогноз по сделкам: сумма комиссий по сделкам, которые должны закрыться в этом месяце и находятся в ожидании оплаты.
                   </div>
-                }
-              />
-              Счета
-            </CardTitle>
-            <CardDescription>Остатки вводятся вручную (текущее)</CardDescription>
+                  <div className="font-medium">План расходов</div>
+                  <div className="text-muted-foreground">
+                    Сумма плановых расходов по операциям со статусом «План» в этом месяце.
+                  </div>
+                  <div className="font-medium">Закрытие</div>
+                  <div className="text-muted-foreground">
+                    Формула: Открытие + Ожидаю приход − План расходов.
+                  </div>
+                  <div className="text-muted-foreground">
+                    Фактические операции («Факт») уже учтены в балансах счетов, поэтому в прогнозе мы вычитаем только «План».
+                  </div>
+                </div>
+              }
+            />
+            <CardDescription>Баланс = Остаток сейчас + Ожидаемый приход (сделки) - Оставшиеся расходы (план)</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Название</TableHead>
+                  <TableHead>Месяц</TableHead>
+                  <TableHead className="text-right">Открытие</TableHead>
+                  <TableHead className="text-right">Ожидаю приход</TableHead>
+                  <TableHead className="text-right">План расходов</TableHead>
+                  <TableHead className="text-right">Закрытие</TableHead>
+                  <TableHead>Статус</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {forecast.map(f => {
+                  const s = statusBadge(f.status)
+                  return (
+                    <TableRow key={f.monthKey}>
+                      <TableCell className="font-medium">{f.month}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(f.openingBalance)}</TableCell>
+                      <TableCell className="text-right text-green-700">{formatCurrency(f.expectedIncome)}</TableCell>
+                      <TableCell
+                        className="text-right text-red-700 cursor-pointer hover:underline hover:text-red-900"
+                        onClick={() => openExpenseDetails(f.monthKey, f.month)}
+                        title="Нажмите чтобы увидеть детализацию"
+                      >
+                        {formatCurrency(f.plannedExpenses)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(f.closingBalance)}</TableCell>
+                      <TableCell>
+                        <Badge className={s.cls}>{s.label}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Аналитика расходов по категориям */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Аналитика расходов</CardTitle>
+            <CardDescription>Расходы по категориям помесячно</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="sticky left-0 bg-white">Категория</TableHead>
+                    {expenseAnalytics.months.map(mk => {
+                      const [y, m] = mk.split('-')
+                      const date = new Date(Number(y), Number(m) - 1, 1)
+                      return (
+                        <TableHead key={mk} className="text-right min-w-[100px]">
+                          {date.toLocaleString('ru-RU', { month: 'short', year: '2-digit' })}
+                        </TableHead>
+                      )
+                    })}
+                    <TableHead className="text-right font-bold">Итого</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {EXPENSE_CATEGORIES.map(cat => {
+                    const catData = expenseAnalytics.byCategory[cat] || {}
+                    const total = expenseAnalytics.totals[cat] || 0
+                    if (total === 0) return null // Скрываем категории без расходов
+                    return (
+                      <TableRow key={cat}>
+                        <TableCell className="font-medium sticky left-0 bg-white">{cat}</TableCell>
+                        {expenseAnalytics.months.map(mk => (
+                          <TableCell key={mk} className="text-right">
+                            {catData[mk] ? formatCurrency(catData[mk]) : '-'}
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-right font-bold">{formatCurrency(total)}</TableCell>
+                      </TableRow>
+                    )
+                  })}
+                  {/* Итого по месяцам */}
+                  <TableRow className="bg-gray-50 font-bold">
+                    <TableCell className="sticky left-0 bg-gray-50">Итого</TableCell>
+                    {expenseAnalytics.months.map(mk => {
+                      const monthTotal = EXPENSE_CATEGORIES.reduce((sum, cat) => {
+                        return sum + (expenseAnalytics.byCategory[cat]?.[mk] || 0)
+                      }, 0)
+                      return (
+                        <TableCell key={mk} className="text-right">
+                          {monthTotal > 0 ? formatCurrency(monthTotal) : '-'}
+                        </TableCell>
+                      )
+                    })}
+                    <TableCell className="text-right">
+                      {formatCurrency(Object.values(expenseAnalytics.totals).reduce((a, b) => a + b, 0))}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-lg">Операции</CardTitle>
+            <MetricHelp
+              title="Операции"
+              description="Что значит План/Факт"
+              trigger={<CircleHelp className="h-5 w-5 text-gray-500" />}
+              summary="Единый список всех денежных операций: планируем и отмечаем оплату."
+              details={
+                <div className="space-y-2">
+                  <div className="font-medium">План</div>
+                  <div className="text-muted-foreground">
+                    Деньги еще не списаны/не получены. Такая операция влияет только на прогноз в календаре.
+                  </div>
+                  <div className="font-medium">Факт (оплачено)</div>
+                  <div className="text-muted-foreground">
+                    Деньги реально пришли или ушли со счета. При переводе в «Факт» баланс выбранного счета автоматически меняется.
+                  </div>
+                  <div className="text-muted-foreground">
+                    «Оплатить» — это быстрый способ перевести плановую операцию в факт.
+                  </div>
+                </div>
+              }
+            />
+            <CardDescription>Единая база всех транзакций (план/факт)</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
                   <TableHead>Тип</TableHead>
-                  <TableHead className="text-right">Остаток</TableHead>
+                  <TableHead>Категория</TableHead>
+                  <TableHead>Счет</TableHead>
+                  <TableHead>План</TableHead>
+                  <TableHead>Факт</TableHead>
+                  <TableHead>Статус</TableHead>
+                  <TableHead className="text-right">Сумма</TableHead>
                   <TableHead className="w-[120px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {accounts.map(a => (
-                  <TableRow key={a.id}>
-                    <TableCell className="font-medium">{a.name}</TableCell>
+                {cashFlow.map(c => (
+                  <TableRow key={c.id}>
+                    <TableCell>{c.type === 'INCOME' ? 'Приход' : 'Расход'}</TableCell>
+                    <TableCell>{c.category}</TableCell>
+                    <TableCell>{c.account?.name ?? '-'}</TableCell>
+                    <TableCell>{formatDate(c.plannedDate)}</TableCell>
+                    <TableCell>{formatDate(c.actualDate)}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{accountTypeLabel[a.type]}</Badge>
+                      <Badge variant="secondary" className={c.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                        {c.status === 'PAID' ? 'Факт' : 'План'}
+                      </Badge>
                     </TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(a.balance)}</TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrency(c.amount)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openEditAccount(a)}>
+                        {c.status === 'PLANNED' && (
+                          <Button variant="ghost" size="sm" onClick={() => openPayCashFlow(c)}>
+                            Оплатить
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => openEditCashFlow(c)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteAccount(a.id).catch(err => alert(err.message))}>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteCashFlow(c.id).catch(err => alert(err.message))}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -845,212 +1094,57 @@ export function Treasury() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-lg">Платежный календарь (прогноз)</CardTitle>
-          <MetricHelp
-            title="Платежный календарь (прогноз)"
-            description="Как считаются цифры"
-            trigger={<CircleHelp className="h-5 w-5 text-gray-500" />}
-            summary="Показывает, хватит ли денег с учетом ожидаемых поступлений и плановых расходов."
-            details={
-              <div className="space-y-2">
-                <div className="font-medium">Открытие</div>
-                <div className="text-muted-foreground">
-                  Это текущие деньги на счетах на начало месяца (берется из «Счета»).
-                </div>
-                <div className="font-medium">Ожидаю приход</div>
-                <div className="text-muted-foreground">
-                  Прогноз по сделкам: сумма комиссий по сделкам, которые должны закрыться в этом месяце и находятся в ожидании оплаты.
-                </div>
-                <div className="font-medium">План расходов</div>
-                <div className="text-muted-foreground">
-                  Сумма плановых расходов по операциям со статусом «План» в этом месяце.
-                </div>
-                <div className="font-medium">Закрытие</div>
-                <div className="text-muted-foreground">
-                  Формула: Открытие + Ожидаю приход − План расходов.
-                </div>
-                <div className="text-muted-foreground">
-                  Фактические операции («Факт») уже учтены в балансах счетов, поэтому в прогнозе мы вычитаем только «План».
-                </div>
-              </div>
-            }
-          />
-          <CardDescription>Баланс = Остаток сейчас + Ожидаемый приход (сделки) - Оставшиеся расходы (план)</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Месяц</TableHead>
-                <TableHead className="text-right">Открытие</TableHead>
-                <TableHead className="text-right">Ожидаю приход</TableHead>
-                <TableHead className="text-right">План расходов</TableHead>
-                <TableHead className="text-right">Закрытие</TableHead>
-                <TableHead>Статус</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {forecast.map(f => {
-                const s = statusBadge(f.status)
-                return (
-                  <TableRow key={f.monthKey}>
-                    <TableCell className="font-medium">{f.month}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(f.openingBalance)}</TableCell>
-                    <TableCell className="text-right text-green-700">{formatCurrency(f.expectedIncome)}</TableCell>
-                    <TableCell className="text-right text-red-700">{formatCurrency(f.plannedExpenses)}</TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(f.closingBalance)}</TableCell>
-                    <TableCell>
-                      <Badge className={s.cls}>{s.label}</Badge>
-                    </TableCell>
+      {/* Диалог детализации расходов */}
+      <Dialog open={isExpenseDetailsOpen} onOpenChange={setIsExpenseDetailsOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Детализация расходов: {expenseDetailsMonth?.month}</DialogTitle>
+            <DialogDescription>Плановые и повторяющиеся расходы за этот месяц</DialogDescription>
+          </DialogHeader>
+          {expenseDetailsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+            </div>
+          ) : expenseDetails.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">Нет расходов</div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Категория</TableHead>
+                    <TableHead>Описание</TableHead>
+                    <TableHead>Тип</TableHead>
+                    <TableHead className="text-right">Сумма</TableHead>
                   </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Аналитика расходов по категориям */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Аналитика расходов</CardTitle>
-          <CardDescription>Расходы по категориям помесячно</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="sticky left-0 bg-white">Категория</TableHead>
-                  {expenseAnalytics.months.map(mk => {
-                    const [y, m] = mk.split('-')
-                    const date = new Date(Number(y), Number(m) - 1, 1)
-                    return (
-                      <TableHead key={mk} className="text-right min-w-[100px]">
-                        {date.toLocaleString('ru-RU', { month: 'short', year: '2-digit' })}
-                      </TableHead>
-                    )
-                  })}
-                  <TableHead className="text-right font-bold">Итого</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {EXPENSE_CATEGORIES.map(cat => {
-                  const catData = expenseAnalytics.byCategory[cat] || {}
-                  const total = expenseAnalytics.totals[cat] || 0
-                  if (total === 0) return null // Скрываем категории без расходов
-                  return (
-                    <TableRow key={cat}>
-                      <TableCell className="font-medium sticky left-0 bg-white">{cat}</TableCell>
-                      {expenseAnalytics.months.map(mk => (
-                        <TableCell key={mk} className="text-right">
-                          {catData[mk] ? formatCurrency(catData[mk]) : '-'}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-right font-bold">{formatCurrency(total)}</TableCell>
-                    </TableRow>
-                  )
-                })}
-                {/* Итого по месяцам */}
-                <TableRow className="bg-gray-50 font-bold">
-                  <TableCell className="sticky left-0 bg-gray-50">Итого</TableCell>
-                  {expenseAnalytics.months.map(mk => {
-                    const monthTotal = EXPENSE_CATEGORIES.reduce((sum, cat) => {
-                      return sum + (expenseAnalytics.byCategory[cat]?.[mk] || 0)
-                    }, 0)
-                    return (
-                      <TableCell key={mk} className="text-right">
-                        {monthTotal > 0 ? formatCurrency(monthTotal) : '-'}
+                </TableHeader>
+                <TableBody>
+                  {expenseDetails.map(e => (
+                    <TableRow key={e.id + e.source}>
+                      <TableCell className="font-medium">{e.category || '-'}</TableCell>
+                      <TableCell className="max-w-xs truncate" title={e.description || undefined}>
+                        {e.description || '-'}
                       </TableCell>
-                    )
-                  })}
-                  <TableCell className="text-right">
-                    {formatCurrency(Object.values(expenseAnalytics.totals).reduce((a, b) => a + b, 0))}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-lg">Операции</CardTitle>
-          <MetricHelp
-            title="Операции"
-            description="Что значит План/Факт"
-            trigger={<CircleHelp className="h-5 w-5 text-gray-500" />}
-            summary="Единый список всех денежных операций: планируем и отмечаем оплату."
-            details={
-              <div className="space-y-2">
-                <div className="font-medium">План</div>
-                <div className="text-muted-foreground">
-                  Деньги еще не списаны/не получены. Такая операция влияет только на прогноз в календаре.
-                </div>
-                <div className="font-medium">Факт (оплачено)</div>
-                <div className="text-muted-foreground">
-                  Деньги реально пришли или ушли со счета. При переводе в «Факт» баланс выбранного счета автоматически меняется.
-                </div>
-                <div className="text-muted-foreground">
-                  «Оплатить» — это быстрый способ перевести плановую операцию в факт.
-                </div>
+                      <TableCell>
+                        <Badge variant="secondary" className={e.isRecurring ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}>
+                          {e.isRecurring ? 'Повтор.' : 'План'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(e.amount)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="mt-4 pt-4 border-t flex justify-between items-center">
+                <span className="font-medium">Итого:</span>
+                <span className="text-xl font-bold text-red-700">
+                  {formatCurrency(expenseDetails.reduce((sum, e) => sum + e.amount, 0))}
+                </span>
               </div>
-            }
-          />
-          <CardDescription>Единая база всех транзакций (план/факт)</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Тип</TableHead>
-                <TableHead>Категория</TableHead>
-                <TableHead>Счет</TableHead>
-                <TableHead>План</TableHead>
-                <TableHead>Факт</TableHead>
-                <TableHead>Статус</TableHead>
-                <TableHead className="text-right">Сумма</TableHead>
-                <TableHead className="w-[120px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {cashFlow.map(c => (
-                <TableRow key={c.id}>
-                  <TableCell>{c.type === 'INCOME' ? 'Приход' : 'Расход'}</TableCell>
-                  <TableCell>{c.category}</TableCell>
-                  <TableCell>{c.account?.name ?? '-'}</TableCell>
-                  <TableCell>{formatDate(c.plannedDate)}</TableCell>
-                  <TableCell>{formatDate(c.actualDate)}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className={c.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                      {c.status === 'PAID' ? 'Факт' : 'План'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(c.amount)}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {c.status === 'PLANNED' && (
-                        <Button variant="ghost" size="sm" onClick={() => openPayCashFlow(c)}>
-                          Оплатить
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" onClick={() => openEditCashFlow(c)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteCashFlow(c.id).catch(err => alert(err.message))}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
