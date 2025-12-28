@@ -83,6 +83,8 @@ export async function POST(request: NextRequest) {
 
         const delta = statusUpper === 'PAID' && nextActualDate && nextAccountId ? (typeUpper === 'INCOME' ? 1 : -1) * amount : 0
 
+        const isRecurring = typeUpper === 'EXPENSE' ? Boolean(data.isRecurring) : false
+
         const created = await db.$transaction(async tx => {
           const cashFlow = await tx.cashFlow.create({
             data: {
@@ -93,7 +95,8 @@ export async function POST(request: NextRequest) {
               plannedDate,
               actualDate: nextActualDate,
               description: data.description ? String(data.description) : null,
-              accountId: nextAccountId
+              accountId: nextAccountId,
+              isRecurring
             }
           })
 
@@ -143,6 +146,13 @@ async function computeForecast(months: number) {
   })
   const expectedIncome = expectedTotal._sum.netProfit ?? 0
 
+  // Повторяющиеся расходы — добавляются к каждому месяцу
+  const recurringExpenses = await db.cashFlow.aggregate({
+    where: { type: 'EXPENSE', isRecurring: true },
+    _sum: { amount: true }
+  })
+  const recurringExpenseSum = recurringExpenses._sum.amount ?? 0
+
   for (let i = 0; i < months; i++) {
     const date = new Date(now.getFullYear(), now.getMonth() + i, 1)
     const from = startOfMonth(date)
@@ -151,11 +161,13 @@ async function computeForecast(months: number) {
     const plannedExpenses = await db.cashFlow.aggregate({
       // Opening balance is taken from current account balances (includes already paid operations),
       // so for forecast we subtract only expenses that are not marked as paid yet.
-      where: { type: 'EXPENSE', status: 'PLANNED', plannedDate: { gte: from, lte: to } },
+      // Exclude recurring expenses here as they are added separately
+      where: { type: 'EXPENSE', status: 'PLANNED', isRecurring: false, plannedDate: { gte: from, lte: to } },
       _sum: { amount: true }
     })
 
-    const plannedExpenseSum = plannedExpenses._sum.amount ?? 0
+    // Для месяца: одноразовые плановые + все повторяющиеся
+    const plannedExpenseSum = (plannedExpenses._sum.amount ?? 0) + recurringExpenseSum
 
     // Для первого месяца expectedIncome = полная сумма ожидаемого прихода
     // Для последующих месяцев expectedIncome = 0, т.к. уже учтён в первом месяце

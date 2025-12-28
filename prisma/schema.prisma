@@ -104,6 +104,7 @@ model CashFlow {
   actualDate  DateTime?
   description String?
   accountId   String?
+  isRecurring Boolean      @default(false) // Повторяющийся расход (каждый месяц)
   createdAt   DateTime     @default(now())
 
   account     Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)

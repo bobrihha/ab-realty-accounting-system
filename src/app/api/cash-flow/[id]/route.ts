@@ -78,7 +78,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           plannedDate: nextPlannedDate,
           actualDate: nextActualDate,
           description: nextDescription,
-          accountId: nextAccountId
+          accountId: nextAccountId,
+          isRecurring: nextType === 'EXPENSE' ? Boolean(data.isRecurring ?? existing.isRecurring) : false
         }
       })
     })

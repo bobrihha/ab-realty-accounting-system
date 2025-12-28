@@ -34,6 +34,7 @@ type CashFlowItem = {
   description: string | null
   accountId: string | null
   account: Account | null
+  isRecurring: boolean
 }
 
 type MonthlyForecast = {
@@ -95,7 +96,8 @@ export function Treasury() {
     plannedDate: '',
     actualDate: '',
     description: '',
-    accountId: ''
+    accountId: '',
+    isRecurring: false
   })
 
   const load = async () => {
@@ -216,7 +218,8 @@ export function Treasury() {
       plannedDate: item.plannedDate.slice(0, 10),
       actualDate: item.actualDate ? item.actualDate.slice(0, 10) : '',
       description: item.description ?? '',
-      accountId: item.accountId ?? ''
+      accountId: item.accountId ?? '',
+      isRecurring: item.isRecurring
     })
     setIsEditCashFlowDialogOpen(true)
   }
@@ -231,7 +234,8 @@ export function Treasury() {
       plannedDate: item.plannedDate.slice(0, 10),
       actualDate: item.actualDate ? item.actualDate.slice(0, 10) : item.plannedDate.slice(0, 10),
       description: item.description ?? '',
-      accountId: item.accountId ?? ''
+      accountId: item.accountId ?? '',
+      isRecurring: item.isRecurring
     })
     setIsEditCashFlowDialogOpen(true)
   }
@@ -299,12 +303,13 @@ export function Treasury() {
         plannedDate,
         actualDate: status === 'PAID' ? (newCashFlow.actualDate || plannedDate) : null,
         description: newCashFlow.description || null,
-        accountId: status === 'PAID' ? newCashFlow.accountId : null
+        accountId: status === 'PAID' ? newCashFlow.accountId : null,
+        isRecurring: newCashFlow.type === 'EXPENSE' ? newCashFlow.isRecurring : false
       })
     })
     if (!res.ok) throw new Error('Не удалось добавить операцию')
     setIsCashFlowDialogOpen(false)
-    setNewCashFlow({ type: 'INCOME', status: 'PAID', amount: '', category: '', plannedDate: '', actualDate: '', description: '', accountId: '' })
+    setNewCashFlow({ type: 'INCOME', status: 'PAID', amount: '', category: '', plannedDate: '', actualDate: '', description: '', accountId: '', isRecurring: false })
     await load()
   }
 
@@ -325,14 +330,15 @@ export function Treasury() {
         plannedDate,
         actualDate: status === 'PAID' ? (newCashFlow.actualDate || plannedDate) : null,
         description: newCashFlow.description || null,
-        accountId: status === 'PAID' ? newCashFlow.accountId : null
+        accountId: status === 'PAID' ? newCashFlow.accountId : null,
+        isRecurring: newCashFlow.type === 'EXPENSE' ? newCashFlow.isRecurring : false
       })
     })
 
     if (!res.ok) throw new Error('Не удалось обновить операцию')
     setIsEditCashFlowDialogOpen(false)
     setEditingCashFlow(null)
-    setNewCashFlow({ type: 'INCOME', status: 'PAID', amount: '', category: '', plannedDate: '', actualDate: '', description: '', accountId: '' })
+    setNewCashFlow({ type: 'INCOME', status: 'PAID', amount: '', category: '', plannedDate: '', actualDate: '', description: '', accountId: '', isRecurring: false })
     await load()
   }
 
@@ -511,6 +517,18 @@ export function Treasury() {
                   <Label>Описание</Label>
                   <Input value={newCashFlow.description} onChange={e => setNewCashFlow(p => ({ ...p, description: e.target.value }))} />
                 </div>
+                {newCashFlow.type === 'EXPENSE' && (
+                  <div className="col-span-2 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="isRecurring"
+                      checked={newCashFlow.isRecurring}
+                      onChange={e => setNewCashFlow(p => ({ ...p, isRecurring: e.target.checked }))}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <Label htmlFor="isRecurring" className="cursor-pointer">Повторяющийся расход (каждый месяц)</Label>
+                  </div>
+                )}
                 <div className="col-span-2 flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setIsCashFlowDialogOpen(false)}>
                     Отмена
@@ -674,6 +692,18 @@ export function Treasury() {
               <Label>Описание</Label>
               <Input value={newCashFlow.description} onChange={e => setNewCashFlow(p => ({ ...p, description: e.target.value }))} />
             </div>
+            {newCashFlow.type === 'EXPENSE' && (
+              <div className="col-span-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isRecurringEdit"
+                  checked={newCashFlow.isRecurring}
+                  onChange={e => setNewCashFlow(p => ({ ...p, isRecurring: e.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Label htmlFor="isRecurringEdit" className="cursor-pointer">Повторяющийся расход (каждый месяц)</Label>
+              </div>
+            )}
             <div className="col-span-2 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsEditCashFlowDialogOpen(false)}>
                 Отмена
