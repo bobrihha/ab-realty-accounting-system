@@ -52,18 +52,14 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Юр.услуги из сделок (только по dealDate, как в /api/legal-services/stats)
     const legalServicesDeals = await db.deal.findMany({
       where: {
         legalServices: true,
-        NOT: { status: 'CANCELLED' },
-        OR: [
-          { dealDate: { gte: from, lte: to } },
-          { dealDate: null, depositDate: { gte: from, lte: to } }
-        ]
+        dealDate: { gte: from, lte: to }
       },
       select: {
         dealDate: true,
-        depositDate: true,
         legalServicesAmount: true
       }
     })
@@ -181,9 +177,8 @@ export async function GET(request: NextRequest) {
     }
 
     for (const d of legalServicesDeals) {
-      const date = d.dealDate ?? d.depositDate
-      if (!date) continue
-      const mk = mkFor(date)
+      if (!d.dealDate) continue
+      const mk = mkFor(d.dealDate)
       const m = ensureLegalMonth(mk)
       if (!m) continue
       m.dealsCount += 1
