@@ -13,7 +13,13 @@ export async function ensureDealPayrollAccruals(dealId: string) {
       ropCommission: true
     }
   })
-  if (!deal || !deal.dealDate || deal.status === 'CANCELLED') return
+  if (!deal) return
+
+  // Если нет даты сделки или статус CANCELLED — удаляем все начисления по этой сделке
+  if (!deal.dealDate || deal.status === 'CANCELLED') {
+    await db.payrollAccrual.deleteMany({ where: { dealId: deal.id } })
+    return
+  }
 
   const accruedAt = deal.dealDate
 
