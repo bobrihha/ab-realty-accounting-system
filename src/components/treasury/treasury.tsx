@@ -102,6 +102,7 @@ export function Treasury() {
   const [expenseDetailsMonth, setExpenseDetailsMonth] = useState<{ monthKey: string; month: string } | null>(null)
   const [expenseDetails, setExpenseDetails] = useState<ExpenseDetail[]>([])
   const [expenseDetailsLoading, setExpenseDetailsLoading] = useState(false)
+  const [expenseDetailsType, setExpenseDetailsType] = useState<'planned' | 'actual'>('planned')
 
   const [newAccount, setNewAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
   const [editAccount, setEditAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
@@ -169,13 +170,14 @@ export function Treasury() {
   const totalBalance = useMemo(() => accounts.reduce((sum, a) => sum + (a.balance || 0), 0), [accounts])
   const hasCashGap = useMemo(() => forecast.some(f => f.status === 'critical'), [forecast])
 
-  const openExpenseDetails = async (monthKey: string, month: string) => {
+  const openExpenseDetails = async (monthKey: string, month: string, type: 'planned' | 'actual' = 'planned') => {
     setExpenseDetailsMonth({ monthKey, month })
     setExpenseDetails([])
+    setExpenseDetailsType(type)
     setIsExpenseDetailsOpen(true)
     setExpenseDetailsLoading(true)
     try {
-      const res = await fetch(`/api/treasury/expenses?monthKey=${encodeURIComponent(monthKey)}`, { cache: 'no-store' })
+      const res = await fetch(`/api/treasury/expenses?monthKey=${encodeURIComponent(monthKey)}&type=${type}`, { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
         setExpenseDetails(data.expenses ?? [])
@@ -936,14 +938,17 @@ export function Treasury() {
                       <TableCell className="font-medium">{f.month}</TableCell>
                       <TableCell className="text-right">{formatCurrency(f.openingBalance)}</TableCell>
                       <TableCell className="text-right text-green-700">{formatCurrency(f.expectedIncome)}</TableCell>
-                      <TableCell
-                        className="text-right text-red-700 cursor-pointer hover:underline hover:text-red-900"
-                        onClick={() => openExpenseDetails(f.monthKey, f.month)}
+                      <TableCell className="text-right text-red-700 cursor-pointer hover:underline hover:text-red-900"
+                        onClick={() => openExpenseDetails(f.monthKey, f.month, 'planned')}
                         title="Нажмите чтобы увидеть детализацию"
                       >
                         {formatCurrency(f.plannedExpenses)}
                       </TableCell>
-                      <TableCell className="text-right text-orange-700 font-medium">
+                      <TableCell
+                        className="text-right text-orange-700 font-medium cursor-pointer hover:underline hover:text-orange-900"
+                        onClick={() => openExpenseDetails(f.monthKey, f.month, 'actual')}
+                        title="Нажмите чтобы увидеть детализацию"
+                      >
                         {formatCurrency(f.actualExpenses)}
                       </TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(f.closingBalance)}</TableCell>
@@ -1103,8 +1108,14 @@ export function Treasury() {
       <Dialog open={isExpenseDetailsOpen} onOpenChange={setIsExpenseDetailsOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Детализация расходов: {expenseDetailsMonth?.month}</DialogTitle>
-            <DialogDescription>Плановые и повторяющиеся расходы за этот месяц</DialogDescription>
+            <DialogTitle>
+              {expenseDetailsType === 'actual' ? 'Факт расходов' : 'План расходов'}: {expenseDetailsMonth?.month}
+            </DialogTitle>
+            <DialogDescription>
+              {expenseDetailsType === 'actual'
+                ? 'Оплаченные расходы за этот месяц'
+                : 'Плановые и повторяющиеся расходы за этот месяц'}
+            </DialogDescription>
           </DialogHeader>
           {expenseDetailsLoading ? (
             <div className="flex items-center justify-center py-8">

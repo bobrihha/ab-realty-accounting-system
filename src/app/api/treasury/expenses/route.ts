@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url)
         const monthKey = searchParams.get('monthKey') // format: "2025-12"
+        const expenseType = searchParams.get('type') ?? 'planned' // 'planned' | 'actual'
 
         if (!monthKey) {
             return NextResponse.json({ error: 'monthKey is required' }, { status: 400 })
@@ -26,52 +27,87 @@ export async function GET(request: NextRequest) {
         const from = startOfMonth(date)
         const to = endOfMonth(date)
 
-        // Одноразовые плановые расходы за этот месяц
-        const plannedExpenses = await db.cashFlow.findMany({
-            where: {
-                type: 'EXPENSE',
-                status: 'PLANNED',
-                isRecurring: false,
-                plannedDate: { gte: from, lte: to }
-            },
-            select: {
-                id: true,
-                amount: true,
-                category: true,
-                description: true,
-                plannedDate: true,
-                isRecurring: true
-            },
-            orderBy: { plannedDate: 'asc' }
-        })
+        if (expenseType === 'actual') {
+            // Фактические (оплаченные) расходы за месяц
+            const actualExpenses = await db.cashFlow.findMany({
+                where: {
+                    type: 'EXPENSE',
+                    status: 'PAID',
+                    actualDate: { gte: from, lte: to }
+                },
+                select: {
+                    id: true,
+                    amount: true,
+                    category: true,
+                    description: true,
+                    actualDate: true,
+                    isRecurring: true
+                },
+                orderBy: { actualDate: 'asc' }
+            })
 
-        // Повторяющиеся расходы (добавляются к каждому месяцу)
-        const recurringExpenses = await db.cashFlow.findMany({
-            where: { type: 'EXPENSE', isRecurring: true },
-            select: {
-                id: true,
-                amount: true,
-                category: true,
-                description: true,
-                plannedDate: true,
-                isRecurring: true
-            },
-            orderBy: { category: 'asc' }
-        })
+            const allExpenses = actualExpenses.map(e => ({
+                ...e,
+                source: 'actual' as const,
+                plannedDate: e.actualDate // для совместимости с UI
+            }))
 
-        // Объединяем все расходы
-        const allExpenses = [
-            ...recurringExpenses.map(e => ({ ...e, source: 'recurring' as const })),
-            ...plannedExpenses.map(e => ({ ...e, source: 'planned' as const }))
-        ]
+            const totalAmount = allExpenses.reduce((sum, e) => sum + e.amount, 0)
 
-        const totalAmount = allExpenses.reduce((sum, e) => sum + e.amount, 0)
+            return NextResponse.json({
+                monthKey,
+                type: 'actual',
+                expenses: allExpenses,
+                totalAmount
+            })
+        } else {
+            // Плановые расходы (план)
+            const plannedExpenses = await db.cashFlow.findMany({
+                where: {
+                    type: 'EXPENSE',
+                    status: 'PLANNED',
+                    isRecurring: false,
+                    plannedDate: { gte: from, lte: to }
+                },
+                select: {
+                    id: true,
+                    amount: true,
+                    category: true,
+                    description: true,
+                    plannedDate: true,
+                    isRecurring: true
+                },
+                orderBy: { plannedDate: 'asc' }
+            })
 
-        return NextResponse.json({
-            monthKey,
-            expenses: allExpenses,
-            totalAmount
-        })
+            // Повторяющиеся расходы (добавляются к каждому месяцу)
+            const recurringExpenses = await db.cashFlow.findMany({
+                where: { type: 'EXPENSE', isRecurring: true },
+                select: {
+                    id: true,
+                    amount: true,
+                    category: true,
+                    description: true,
+                    plannedDate: true,
+                    isRecurring: true
+                },
+                orderBy: { category: 'asc' }
+            })
+
+            const allExpenses = [
+                ...recurringExpenses.map(e => ({ ...e, source: 'recurring' as const })),
+                ...plannedExpenses.map(e => ({ ...e, source: 'planned' as const }))
+            ]
+
+            const totalAmount = allExpenses.reduce((sum, e) => sum + e.amount, 0)
+
+            return NextResponse.json({
+                monthKey,
+                type: 'planned',
+                expenses: allExpenses,
+                totalAmount
+            })
+        }
     } catch (error) {
         if ((error as Error).message === 'UNAUTHORIZED') {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -80,3 +116,4 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to fetch expense details' }, { status: 500 })
     }
 }
+
