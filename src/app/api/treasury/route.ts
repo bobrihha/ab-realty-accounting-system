@@ -166,8 +166,19 @@ async function computeForecast(months: number) {
       _sum: { amount: true }
     })
 
+    // Факт расходов за месяц (оплаченные)
+    const actualExpenses = await db.cashFlow.aggregate({
+      where: {
+        type: 'EXPENSE',
+        status: 'PAID',
+        actualDate: { gte: from, lte: to }
+      },
+      _sum: { amount: true }
+    })
+
     // Для месяца: одноразовые плановые + все повторяющиеся
     const plannedExpenseSum = (plannedExpenses._sum.amount ?? 0) + recurringExpenseSum
+    const actualExpenseSum = actualExpenses._sum.amount ?? 0
 
     // Для первого месяца expectedIncome = полная сумма ожидаемого прихода
     // Для последующих месяцев expectedIncome = 0, т.к. уже учтён в первом месяце
@@ -182,6 +193,7 @@ async function computeForecast(months: number) {
       openingBalance,
       expectedIncome: monthExpectedIncome,
       plannedExpenses: plannedExpenseSum,
+      actualExpenses: actualExpenseSum,
       closingBalance,
       status
     })

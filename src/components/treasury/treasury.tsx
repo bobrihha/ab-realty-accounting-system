@@ -43,6 +43,7 @@ type MonthlyForecast = {
   openingBalance: number
   expectedIncome: number
   plannedExpenses: number
+  actualExpenses: number
   closingBalance: number
   status: 'positive' | 'critical'
 }
@@ -922,6 +923,7 @@ export function Treasury() {
                   <TableHead className="text-right">Открытие</TableHead>
                   <TableHead className="text-right">Ожидаю приход</TableHead>
                   <TableHead className="text-right">План расходов</TableHead>
+                  <TableHead className="text-right">Факт расходов</TableHead>
                   <TableHead className="text-right">Закрытие</TableHead>
                   <TableHead>Статус</TableHead>
                 </TableRow>
@@ -940,6 +942,9 @@ export function Treasury() {
                         title="Нажмите чтобы увидеть детализацию"
                       >
                         {formatCurrency(f.plannedExpenses)}
+                      </TableCell>
+                      <TableCell className="text-right text-orange-700 font-medium">
+                        {formatCurrency(f.actualExpenses)}
                       </TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(f.closingBalance)}</TableCell>
                       <TableCell>
