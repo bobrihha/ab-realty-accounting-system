@@ -146,12 +146,11 @@ async function computeForecast(months: number) {
   })
   const expectedIncome = expectedTotal._sum.netProfit ?? 0
 
-  // Повторяющиеся расходы — добавляются к каждому месяцу
-  const recurringExpenses = await db.cashFlow.aggregate({
+  // Повторяющиеся расходы — загружаем список для проверки по категориям
+  const recurringExpensesList = await db.cashFlow.findMany({
     where: { type: 'EXPENSE', isRecurring: true },
-    _sum: { amount: true }
+    select: { id: true, category: true, amount: true }
   })
-  const recurringExpenseSum = recurringExpenses._sum.amount ?? 0
 
   for (let i = 0; i < months; i++) {
     const date = new Date(now.getFullYear(), now.getMonth() + i, 1)
@@ -176,14 +175,48 @@ async function computeForecast(months: number) {
       _sum: { amount: true }
     })
 
-    // Для месяца: одноразовые плановые + все повторяющиеся
+    // Получаем категории расходов, оплаченных ЗА этот месяц (по plannedDate, не actualDate)
+    const paidExpensesForThisMonth = await db.cashFlow.findMany({
+      where: {
+        type: 'EXPENSE',
+        status: 'PAID',
+        plannedDate: { gte: from, lte: to }
+      },
+      select: { category: true }
+    })
+    const paidCategories = new Set(paidExpensesForThisMonth.map(e => e.category))
+
+    // Считаем сумму повторяющихся расходов, исключая те категории, которые уже оплачены
+    let recurringExpenseSum = 0
+    for (const re of recurringExpensesList) {
+      if (!paidCategories.has(re.category)) {
+        recurringExpenseSum += re.amount
+      }
+    }
+
+    // Для месяца: одноразовые плановые + повторяющиеся (не оплаченные)
     const plannedExpenseSum = (plannedExpenses._sum.amount ?? 0) + recurringExpenseSum
+
+    // Факт расходов ЗА этот месяц (по plannedDate — за какой период оплачено)
+    const actualExpensesForThisMonth = await db.cashFlow.aggregate({
+      where: {
+        type: 'EXPENSE',
+        status: 'PAID',
+        plannedDate: { gte: from, lte: to }
+      },
+      _sum: { amount: true }
+    })
+    const actualExpenseForPeriod = actualExpensesForThisMonth._sum.amount ?? 0
+
+    // actualExpenses по дате оплаты (для отображения в колонке "Факт расходов")
     const actualExpenseSum = actualExpenses._sum.amount ?? 0
 
     // Для первого месяца expectedIncome = полная сумма ожидаемого прихода
     // Для последующих месяцев expectedIncome = 0, т.к. уже учтён в первом месяце
     const monthExpectedIncome = i === 0 ? expectedIncome : 0
-    const closingBalance = openingBalance + monthExpectedIncome - plannedExpenseSum
+
+    // Закрытие = Открытие + Ожидаемый приход - План (неоплаченный) - Факт (оплаченный за этот период)
+    const closingBalance = openingBalance + monthExpectedIncome - plannedExpenseSum - actualExpenseForPeriod
 
     const status = closingBalance < 0 ? 'critical' : 'positive'
 

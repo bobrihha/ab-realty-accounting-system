@@ -75,12 +75,14 @@ export async function GET(request: NextRequest) {
                     category: true,
                     description: true,
                     plannedDate: true,
-                    isRecurring: true
+                    isRecurring: true,
+                    status: true,
+                    accountId: true
                 },
                 orderBy: { plannedDate: 'asc' }
             })
 
-            // Повторяющиеся расходы (добавляются к каждому месяцу)
+            // Повторяющиеся расходы
             const recurringExpenses = await db.cashFlow.findMany({
                 where: { type: 'EXPENSE', isRecurring: true },
                 select: {
@@ -89,13 +91,30 @@ export async function GET(request: NextRequest) {
                     category: true,
                     description: true,
                     plannedDate: true,
-                    isRecurring: true
+                    isRecurring: true,
+                    status: true,
+                    accountId: true
                 },
                 orderBy: { category: 'asc' }
             })
 
+            // Получаем категории расходов, которые уже оплачены ЗА этот месяц
+            // (проверяем по plannedDate, т.к. actualDate - это когда оплатили, а plannedDate - за какой период)
+            const paidExpensesForThisMonth = await db.cashFlow.findMany({
+                where: {
+                    type: 'EXPENSE',
+                    status: 'PAID',
+                    plannedDate: { gte: from, lte: to }
+                },
+                select: { category: true }
+            })
+            const paidCategories = new Set(paidExpensesForThisMonth.map(e => e.category))
+
+            // Фильтруем повторяющиеся расходы — исключаем те, категория которых уже оплачена
+            const unpaidRecurring = recurringExpenses.filter(e => !paidCategories.has(e.category))
+
             const allExpenses = [
-                ...recurringExpenses.map(e => ({ ...e, source: 'recurring' as const })),
+                ...unpaidRecurring.map(e => ({ ...e, source: 'recurring' as const })),
                 ...plannedExpenses.map(e => ({ ...e, source: 'planned' as const }))
             ]
 

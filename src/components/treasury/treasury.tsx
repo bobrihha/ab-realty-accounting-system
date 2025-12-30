@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertTriangle, CircleHelp, DollarSign, Edit, Plus, RefreshCw, Trash2, TrendingUp, Wallet } from 'lucide-react'
+import { AlertTriangle, Check, CircleHelp, DollarSign, Edit, Plus, RefreshCw, Trash2, TrendingUp, Wallet } from 'lucide-react'
 import { MetricHelp } from '@/components/help/metric-help'
 
 type AccountType = 'BANK' | 'CASH' | 'DIGITAL'
@@ -61,7 +61,9 @@ type ExpenseDetail = {
   description: string | null
   plannedDate: string
   isRecurring: boolean
-  source: 'recurring' | 'planned'
+  source: 'recurring' | 'planned' | 'actual'
+  status?: 'PLANNED' | 'PAID'
+  accountId?: string | null
 }
 
 // Фиксированный список категорий расходов
@@ -103,6 +105,11 @@ export function Treasury() {
   const [expenseDetails, setExpenseDetails] = useState<ExpenseDetail[]>([])
   const [expenseDetailsLoading, setExpenseDetailsLoading] = useState(false)
   const [expenseDetailsType, setExpenseDetailsType] = useState<'planned' | 'actual'>('planned')
+
+  // Диалог оплаты расхода из плана
+  const [isPayExpenseDialogOpen, setIsPayExpenseDialogOpen] = useState(false)
+  const [payingExpense, setPayingExpense] = useState<ExpenseDetail | null>(null)
+  const [payExpenseData, setPayExpenseData] = useState({ accountId: '', actualDate: '' })
 
   const [newAccount, setNewAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
   const [editAccount, setEditAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
@@ -384,6 +391,85 @@ export function Treasury() {
     const res = await fetch(`/api/cash-flow/${id}`, { method: 'DELETE' })
     if (!res.ok) throw new Error('Не удалось удалить операцию')
     await load()
+  }
+
+  // Открыть диалог оплаты расхода
+  const openPayExpenseDialog = (expense: ExpenseDetail) => {
+    setPayingExpense(expense)
+    setPayExpenseData({
+      accountId: expense.accountId ?? '',
+      actualDate: new Date().toISOString().slice(0, 10)
+    })
+    setIsPayExpenseDialogOpen(true)
+  }
+
+  // Обработчик оплаты расхода (перевод план → факт)
+  const [payingInProgress, setPayingInProgress] = useState(false)
+
+  const handlePayExpense = async () => {
+    if (!payingExpense || !expenseDetailsMonth) return
+    if (!payExpenseData.accountId) {
+      alert('Выберите счет для оплаты')
+      return
+    }
+    if (payingInProgress) return // Защита от повторных кликов
+
+    setPayingInProgress(true)
+    try {
+      if (payingExpense.isRecurring) {
+        // Для повторяющихся расходов: создаём новую запись PAID
+        // plannedDate = первое число месяца, за который оплачиваем (для отслеживания периода)
+        // actualDate = фактическая дата оплаты
+        const [year, month] = expenseDetailsMonth.monthKey.split('-').map(Number)
+        const targetMonthDate = new Date(year, month - 1, 15).toISOString().slice(0, 10) // середина целевого месяца
+
+        const res = await fetch('/api/treasury?type=cashflow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'EXPENSE',
+            status: 'PAID',
+            amount: payingExpense.amount,
+            category: payingExpense.category,
+            plannedDate: targetMonthDate, // месяц, ЗА который оплачиваем
+            actualDate: payExpenseData.actualDate, // когда фактически оплатили
+            description: payingExpense.description ?? `${payingExpense.category} (${expenseDetailsMonth.month})`,
+            accountId: payExpenseData.accountId,
+            isRecurring: false
+          })
+        })
+        if (!res.ok) throw new Error('Не удалось создать факт расхода')
+      } else {
+        // Для обычных плановых: обновляем существующую запись
+        const res = await fetch(`/api/cash-flow/${payingExpense.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'EXPENSE',
+            status: 'PAID',
+            amount: payingExpense.amount,
+            category: payingExpense.category,
+            plannedDate: payingExpense.plannedDate,
+            actualDate: payExpenseData.actualDate,
+            description: payingExpense.description,
+            accountId: payExpenseData.accountId,
+            isRecurring: false
+          })
+        })
+        if (!res.ok) throw new Error('Не удалось обновить расход')
+      }
+
+      // Закрываем ОБА диалога и перезагружаем данные
+      setIsPayExpenseDialogOpen(false)
+      setIsExpenseDetailsOpen(false)
+      setPayingExpense(null)
+      await load()
+      alert(`✓ Расход "${payingExpense.category}" оплачен!`)
+    } catch (err) {
+      alert((err as Error).message || 'Ошибка при оплате')
+    } finally {
+      setPayingInProgress(false)
+    }
   }
 
   if (loading) {
@@ -1132,6 +1218,7 @@ export function Treasury() {
                     <TableHead>Описание</TableHead>
                     <TableHead>Тип</TableHead>
                     <TableHead className="text-right">Сумма</TableHead>
+                    {expenseDetailsType === 'planned' && <TableHead className="text-center">Действие</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1147,6 +1234,19 @@ export function Treasury() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(e.amount)}</TableCell>
+                      {expenseDetailsType === 'planned' && (
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-green-700 border-green-300 hover:bg-green-50"
+                            onClick={() => openPayExpenseDialog(e)}
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            Оплатить
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1159,6 +1259,75 @@ export function Treasury() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог оплаты расхода */}
+      <Dialog open={isPayExpenseDialogOpen} onOpenChange={setIsPayExpenseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Оплатить расход</DialogTitle>
+            <DialogDescription>
+              {payingExpense && (
+                <>
+                  <strong>{payingExpense.category}</strong>
+                  {payingExpense.description && ` — ${payingExpense.description}`}
+                  <br />
+                  Сумма: <strong>{formatCurrency(payingExpense.amount)}</strong>
+                  {payingExpense.isRecurring && (
+                    <span className="text-purple-600 ml-2">(повторяющийся — будет создан факт, план останется)</span>
+                  )}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Счёт для оплаты *</Label>
+              <select
+                className="w-full border rounded-md p-2"
+                value={payExpenseData.accountId}
+                onChange={e => setPayExpenseData(p => ({ ...p, accountId: e.target.value }))}
+              >
+                <option value="">Выберите счёт</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({formatCurrency(a.balance)})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>Дата оплаты</Label>
+              <Input
+                type="date"
+                value={payExpenseData.actualDate}
+                onChange={e => setPayExpenseData(p => ({ ...p, actualDate: e.target.value }))}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsPayExpenseDialogOpen(false)} disabled={payingInProgress}>
+                Отмена
+              </Button>
+              <Button
+                onClick={handlePayExpense}
+                className="bg-green-600 hover:bg-green-700"
+                disabled={payingInProgress}
+              >
+                {payingInProgress ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Оплачиваем...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4 mr-2" />
+                    Подтвердить оплату
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
