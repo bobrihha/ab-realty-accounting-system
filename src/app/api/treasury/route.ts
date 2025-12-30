@@ -138,6 +138,10 @@ async function computeForecast(months: number) {
   const now = new Date()
   const items: any[] = []
 
+  // Категории расходов, которые НЕ учитываются в прогнозе,
+  // т.к. netProfit сделок уже учтена за вычетом комиссий агентов/РОП
+  const EXCLUDED_PAYROLL_CATEGORIES = ['ЗП агентам (выплата)', 'ЗП РОП (выплата)']
+
   // "Ожидаю приход" — сумма netProfit всех активных сделок (кроме CLOSED и CANCELLED)
   // Эта сумма одинакова для всех месяцев, т.к. не привязана к плановой дате
   const expectedTotal = await db.deal.aggregate({
@@ -158,10 +162,15 @@ async function computeForecast(months: number) {
     const to = endOfMonth(date)
 
     const plannedExpenses = await db.cashFlow.aggregate({
-      // Opening balance is taken from current account balances (includes already paid operations),
-      // so for forecast we subtract only expenses that are not marked as paid yet.
       // Exclude recurring expenses here as they are added separately
-      where: { type: 'EXPENSE', status: 'PLANNED', isRecurring: false, plannedDate: { gte: from, lte: to } },
+      // Exclude payroll categories - already accounted in netProfit
+      where: {
+        type: 'EXPENSE',
+        status: 'PLANNED',
+        isRecurring: false,
+        plannedDate: { gte: from, lte: to },
+        category: { notIn: EXCLUDED_PAYROLL_CATEGORIES }
+      },
       _sum: { amount: true }
     })
 
@@ -198,11 +207,13 @@ async function computeForecast(months: number) {
     const plannedExpenseSum = (plannedExpenses._sum.amount ?? 0) + recurringExpenseSum
 
     // Факт расходов ЗА этот месяц (по plannedDate — за какой период оплачено)
+    // Исключаем ЗП агентам/РОП - уже учтены в netProfit
     const actualExpensesForThisMonth = await db.cashFlow.aggregate({
       where: {
         type: 'EXPENSE',
         status: 'PAID',
-        plannedDate: { gte: from, lte: to }
+        plannedDate: { gte: from, lte: to },
+        category: { notIn: EXCLUDED_PAYROLL_CATEGORIES }
       },
       _sum: { amount: true }
     })

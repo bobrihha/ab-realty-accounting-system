@@ -61,13 +61,17 @@ export async function GET(request: NextRequest) {
                 totalAmount
             })
         } else {
+            // Категории ЗП агентам/РОП не показываем - уже учтены в netProfit сделок
+            const EXCLUDED_PAYROLL_CATEGORIES = ['ЗП агентам (выплата)', 'ЗП РОП (выплата)']
+
             // Плановые расходы (план)
             const plannedExpenses = await db.cashFlow.findMany({
                 where: {
                     type: 'EXPENSE',
                     status: 'PLANNED',
                     isRecurring: false,
-                    plannedDate: { gte: from, lte: to }
+                    plannedDate: { gte: from, lte: to },
+                    category: { notIn: EXCLUDED_PAYROLL_CATEGORIES }
                 },
                 select: {
                     id: true,
@@ -110,8 +114,13 @@ export async function GET(request: NextRequest) {
             })
             const paidCategories = new Set(paidExpensesForThisMonth.map(e => e.category))
 
-            // Фильтруем повторяющиеся расходы — исключаем те, категория которых уже оплачена
-            const unpaidRecurring = recurringExpenses.filter(e => !paidCategories.has(e.category))
+            // Фильтруем повторяющиеся расходы:
+            // - исключаем категории, которые уже оплачены за этот месяц
+            // - исключаем ЗП агентам/РОП (уже учтены в netProfit)
+            const unpaidRecurring = recurringExpenses.filter(e =>
+                !paidCategories.has(e.category) &&
+                !EXCLUDED_PAYROLL_CATEGORIES.includes(e.category)
+            )
 
             const allExpenses = [
                 ...unpaidRecurring.map(e => ({ ...e, source: 'recurring' as const })),
