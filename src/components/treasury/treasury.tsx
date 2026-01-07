@@ -113,6 +113,11 @@ export function Treasury() {
   const [payingExpense, setPayingExpense] = useState<ExpenseDetail | null>(null)
   const [payExpenseData, setPayExpenseData] = useState({ accountId: '', actualDate: '' })
 
+  // Фильтры для аналитики расходов
+  const [expenseFilterYear, setExpenseFilterYear] = useState<string>(String(currentYear))
+  const [expenseFilterQuarter, setExpenseFilterQuarter] = useState<string>('all')
+  const [expenseFilterMonth, setExpenseFilterMonth] = useState<string>('all')
+
   const [newAccount, setNewAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
   const [editAccount, setEditAccount] = useState({ name: '', balance: '', type: 'BANK' as AccountType })
   const [newCashFlow, setNewCashFlow] = useState({
@@ -200,45 +205,49 @@ export function Treasury() {
     }
   }
 
-  // Аналитика расходов по категориям и месяцам
+  // Аналитика расходов по категориям с фильтрами
   const expenseAnalytics = useMemo(() => {
-    const expenses = cashFlow.filter(c => c.type === 'EXPENSE')
+    // Фильтруем только оплаченные расходы (PAID)
+    const expenses = cashFlow.filter(c => {
+      if (c.type !== 'EXPENSE' || c.status !== 'PAID') return false
+      const date = c.actualDate || c.plannedDate
+      if (!date) return false
+      const d = new Date(date)
+      const year = d.getFullYear()
+      const month = d.getMonth() + 1
+      const quarter = Math.ceil(month / 3)
 
-    // Собираем уникальные месяцы из дат (план или факт)
-    const monthsSet = new Set<string>()
-    expenses.forEach(e => {
-      const date = e.actualDate || e.plannedDate
-      if (date) {
-        const d = new Date(date)
-        const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-        monthsSet.add(mk)
-      }
+      // Фильтр по году
+      if (expenseFilterYear !== 'all' && year !== Number(expenseFilterYear)) return false
+      // Фильтр по кварталу
+      if (expenseFilterQuarter !== 'all' && quarter !== Number(expenseFilterQuarter)) return false
+      // Фильтр по месяцу
+      if (expenseFilterMonth !== 'all' && month !== Number(expenseFilterMonth)) return false
+
+      return true
     })
-    const sortedMonths = Array.from(monthsSet).sort()
 
-    // Группируем по категориям и месяцам
-    const byCategory: Record<string, Record<string, number>> = {}
-    const totals: Record<string, number> = {}
-
-    EXPENSE_CATEGORIES.forEach(cat => {
-      byCategory[cat] = {}
-      totals[cat] = 0
-    })
+    // Группируем по категориям
+    const byCategory: Record<string, number> = {}
+    let grandTotal = 0
 
     expenses.forEach(e => {
       const cat = EXPENSE_CATEGORIES.includes(e.category) ? e.category : 'Другое'
-      const date = e.actualDate || e.plannedDate
-      if (date) {
-        const d = new Date(date)
-        const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-        if (!byCategory[cat]) byCategory[cat] = {}
-        byCategory[cat][mk] = (byCategory[cat][mk] || 0) + e.amount
-        totals[cat] = (totals[cat] || 0) + e.amount
-      }
+      byCategory[cat] = (byCategory[cat] || 0) + e.amount
+      grandTotal += e.amount
     })
 
-    return { months: sortedMonths, byCategory, totals }
-  }, [cashFlow])
+    // Сортируем категории по сумме (убывание)
+    const sortedCategories = Object.entries(byCategory)
+      .sort((a, b) => b[1] - a[1])
+      .map(([category, amount]) => ({
+        category,
+        amount,
+        percent: grandTotal > 0 ? (amount / grandTotal) * 100 : 0
+      }))
+
+    return { categories: sortedCategories, grandTotal }
+  }, [cashFlow, expenseFilterYear, expenseFilterQuarter, expenseFilterMonth])
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 }).format(amount)
@@ -1069,67 +1078,81 @@ export function Treasury() {
           </CardContent>
         </Card>
 
-        {/* Аналитика расходов по категориям */}
+
+        {/* Структура расходов */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Аналитика расходов</CardTitle>
-            <CardDescription>Расходы по категориям помесячно</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky left-0 bg-white">Категория</TableHead>
-                    {expenseAnalytics.months.map(mk => {
-                      const [y, m] = mk.split('-')
-                      const date = new Date(Number(y), Number(m) - 1, 1)
-                      return (
-                        <TableHead key={mk} className="text-right min-w-[100px]">
-                          {date.toLocaleString('ru-RU', { month: 'short', year: '2-digit' })}
-                        </TableHead>
-                      )
-                    })}
-                    <TableHead className="text-right font-bold">Итого</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {EXPENSE_CATEGORIES.map(cat => {
-                    const catData = expenseAnalytics.byCategory[cat] || {}
-                    const total = expenseAnalytics.totals[cat] || 0
-                    if (total === 0) return null // Скрываем категории без расходов
-                    return (
-                      <TableRow key={cat}>
-                        <TableCell className="font-medium sticky left-0 bg-white">{cat}</TableCell>
-                        {expenseAnalytics.months.map(mk => (
-                          <TableCell key={mk} className="text-right">
-                            {catData[mk] ? formatCurrency(catData[mk]) : '-'}
-                          </TableCell>
-                        ))}
-                        <TableCell className="text-right font-bold">{formatCurrency(total)}</TableCell>
-                      </TableRow>
-                    )
-                  })}
-                  {/* Итого по месяцам */}
-                  <TableRow className="bg-gray-50 font-bold">
-                    <TableCell className="sticky left-0 bg-gray-50">Итого</TableCell>
-                    {expenseAnalytics.months.map(mk => {
-                      const monthTotal = EXPENSE_CATEGORIES.reduce((sum, cat) => {
-                        return sum + (expenseAnalytics.byCategory[cat]?.[mk] || 0)
-                      }, 0)
-                      return (
-                        <TableCell key={mk} className="text-right">
-                          {monthTotal > 0 ? formatCurrency(monthTotal) : '-'}
-                        </TableCell>
-                      )
-                    })}
-                    <TableCell className="text-right">
-                      {formatCurrency(Object.values(expenseAnalytics.totals).reduce((a, b) => a + b, 0))}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <CardTitle className="text-lg">Структура расходов</CardTitle>
+                <CardDescription>Фактические расходы по категориям</CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  className="border rounded-md px-3 py-1.5 text-sm"
+                  value={expenseFilterYear}
+                  onChange={e => setExpenseFilterYear(e.target.value)}
+                >
+                  <option value="all">Все годы</option>
+                  {Array.from({ length: 5 }, (_, i) => currentYear - i).map(y => (
+                    <option key={y} value={String(y)}>{y}</option>
+                  ))}
+                </select>
+                <select
+                  className="border rounded-md px-3 py-1.5 text-sm"
+                  value={expenseFilterQuarter}
+                  onChange={e => setExpenseFilterQuarter(e.target.value)}
+                >
+                  <option value="all">Все кварталы</option>
+                  <option value="1">Q1 (янв-мар)</option>
+                  <option value="2">Q2 (апр-июн)</option>
+                  <option value="3">Q3 (июл-сен)</option>
+                  <option value="4">Q4 (окт-дек)</option>
+                </select>
+                <select
+                  className="border rounded-md px-3 py-1.5 text-sm"
+                  value={expenseFilterMonth}
+                  onChange={e => setExpenseFilterMonth(e.target.value)}
+                >
+                  <option value="all">Все месяцы</option>
+                  {['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'].map((m, i) => (
+                    <option key={i + 1} value={String(i + 1)}>{m}</option>
+                  ))}
+                </select>
+              </div>
             </div>
+          </CardHeader>
+          <CardContent>
+            {expenseAnalytics.categories.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                Нет данных за выбранный период
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {expenseAnalytics.categories.map(({ category, amount, percent }) => (
+                    <div
+                      key={category}
+                      className="border rounded-lg p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">{category}</span>
+                        <span className="text-xs text-gray-500">{percent.toFixed(1)}%</span>
+                      </div>
+                      <div className="text-xl font-bold text-gray-900">
+                        {formatCurrency(amount)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 pt-4 border-t flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">Итого расходов</span>
+                  <span className="text-xl font-bold text-gray-900">
+                    {formatCurrency(expenseAnalytics.grandTotal)}
+                  </span>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
