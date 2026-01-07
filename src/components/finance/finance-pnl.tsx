@@ -19,6 +19,8 @@ interface FinancialData {
     category: string
     amount: number
   }[]
+  totalExpenses: number
+  netProfitFromDeals: number
   profit: number
   margin: number
 }
@@ -230,10 +232,9 @@ export function FinancePNL() {
 
 
   const totalRevenue = financialData.reduce((sum, data) => sum + data.revenue, 0)
-  const totalExpenses = financialData.reduce((sum, data) =>
-    sum + data.expenses.reduce((expSum, exp) => expSum + exp.amount, 0), 0
-  )
-  const totalProfit = totalRevenue - totalExpenses
+  const totalIncome = financialData.reduce((sum, data) => sum + (data.netProfitFromDeals ?? 0), 0)
+  const totalExpenses = financialData.reduce((sum, data) => sum + (data.totalExpenses ?? 0), 0)
+  const totalProfit = totalIncome - totalExpenses
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
 
   const metricsTotals = metrics?.totals
@@ -713,56 +714,69 @@ export function FinancePNL() {
 
         <TabsContent value="pnl">
           {/* KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600">
-                  Общая выручка
+                  Выручка
                 </CardTitle>
-                <DollarSign className="h-6 w-6 text-blue-600" />
+                <DollarSign className="h-5 w-5 text-blue-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(totalRevenue)}</div>
-                <p className="text-xs text-gray-500 mt-2">За выбранный период</p>
+                <div className="text-xl font-bold">{formatCurrency(totalRevenue)}</div>
+                <p className="text-xs text-gray-500 mt-1">По сделкам</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600">
-                  Общие расходы
+                  Доход
                 </CardTitle>
-                <TrendingDown className="h-6 w-6 text-red-600" />
+                <Target className="h-5 w-5 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(totalExpenses)}</div>
-                <p className="text-xs text-gray-500 mt-2">За выбранный период</p>
+                <div className="text-xl font-bold text-green-600">{formatCurrency(totalIncome)}</div>
+                <p className="text-xs text-gray-500 mt-1">После выплат и налогов</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600">
-                  Чистая прибыль
+                  Расходы
                 </CardTitle>
-                <Target className="h-6 w-6 text-green-600" />
+                <TrendingDown className="h-5 w-5 text-red-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">{formatCurrency(totalProfit)}</div>
-                <p className="text-xs text-gray-500 mt-2">За выбранный период</p>
+                <div className="text-xl font-bold">{formatCurrency(totalExpenses)}</div>
+                <p className="text-xs text-gray-500 mt-1">Из казначейства</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600">
-                  Средняя маржинальность
+                  Прибыль
                 </CardTitle>
-                <PieChart className="h-6 w-6 text-purple-600" />
+                <TrendingUp className="h-5 w-5 text-emerald-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-purple-600">{formatPercent(avgMargin)}</div>
-                <p className="text-xs text-gray-500 mt-2">За выбранный период</p>
+                <div className={`text-xl font-bold ${totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(totalProfit)}</div>
+                <p className="text-xs text-gray-500 mt-1">Доход − Расходы</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">
+                  Маржа
+                </CardTitle>
+                <PieChart className="h-5 w-5 text-purple-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-xl font-bold text-purple-600">{formatPercent(avgMargin)}</div>
+                <p className="text-xs text-gray-500 mt-1">(Прибыль / Выручка) × 100%</p>
               </CardContent>
             </Card>
           </div>
@@ -780,6 +794,7 @@ export function FinancePNL() {
                     <TableRow>
                       <TableHead>Месяц</TableHead>
                       <TableHead className="text-right">Выручка</TableHead>
+                      <TableHead className="text-right">Доход</TableHead>
                       <TableHead className="text-right">Расходы</TableHead>
                       <TableHead className="text-right">Прибыль</TableHead>
                       <TableHead className="text-right">Маржа</TableHead>
@@ -787,20 +802,24 @@ export function FinancePNL() {
                   </TableHeader>
                   <TableBody>
                     {financialData.map((data) => {
-                      const totalExpenses = data.expenses.reduce((sum, exp) => sum + exp.amount, 0)
+                      const income = data.netProfitFromDeals ?? 0
+                      const expenses = data.totalExpenses ?? 0
+                      const profit = income - expenses
+                      const margin = data.revenue > 0 ? (profit / data.revenue) * 100 : 0
                       return (
                         <TableRow key={data.month}>
                           <TableCell className="font-medium">{data.month}</TableCell>
                           <TableCell className="text-right">{formatCurrency(data.revenue)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(totalExpenses)}</TableCell>
-                          <TableCell className={`text-right font-medium ${getProfitColor(data.margin)}`}>
-                            {formatCurrency(data.profit)}
+                          <TableCell className="text-right text-green-600">{formatCurrency(income)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(expenses)}</TableCell>
+                          <TableCell className={`text-right font-medium ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {formatCurrency(profit)}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end space-x-1">
-                              {getProfitIcon(data.margin)}
-                              <span className={getProfitColor(data.margin)}>
-                                {formatPercent(data.margin)}
+                              {getProfitIcon(margin)}
+                              <span className={getProfitColor(margin)}>
+                                {formatPercent(margin)}
                               </span>
                             </div>
                           </TableCell>
