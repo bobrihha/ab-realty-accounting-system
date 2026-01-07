@@ -84,6 +84,8 @@ const EXPENSE_CATEGORIES = [
 ]
 
 export function Treasury() {
+  const currentYear = new Date().getFullYear()
+  const [selectedYear, setSelectedYear] = useState<string>('current') // 'current' or specific year like '2025'
   const [accounts, setAccounts] = useState<Account[]>([])
   const [cashFlow, setCashFlow] = useState<CashFlowItem[]>([])
   const [forecast, setForecast] = useState<MonthlyForecast[]>([])
@@ -125,10 +127,12 @@ export function Treasury() {
     isRecurring: false
   })
 
-  const load = async () => {
+  const load = async (yearOverride?: string) => {
     setLoading(true)
     setError(null)
-    const res = await fetch('/api/treasury?months=12', { cache: 'no-store' })
+    const yearToUse = yearOverride ?? selectedYear
+    const yearParam = yearToUse === 'current' ? '' : `&year=${yearToUse}`
+    const res = await fetch(`/api/treasury?months=12${yearParam}`, { cache: 'no-store' })
     const redirectLocation = res.headers.get('location')
     if ((res.status === 302 || res.status === 307) && redirectLocation) {
       window.location.assign(redirectLocation)
@@ -971,7 +975,23 @@ export function Treasury() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-lg">Платежный календарь (прогноз)</CardTitle>
+            <div className="flex items-center gap-4">
+              <CardTitle className="text-lg">Платежный календарь {selectedYear === 'current' ? '(прогноз)' : `(${selectedYear} год)`}</CardTitle>
+              <select
+                className="border rounded-md px-3 py-1 text-sm"
+                value={selectedYear}
+                onChange={e => {
+                  const newYear = e.target.value
+                  setSelectedYear(newYear)
+                  load(newYear).catch(err => setError(err.message))
+                }}
+              >
+                <option value="current">Текущий прогноз</option>
+                {Array.from({ length: 5 }, (_, i) => currentYear - 1 - i).map(y => (
+                  <option key={y} value={String(y)}>{y} год</option>
+                ))}
+              </select>
+            </div>
             <MetricHelp
               title="Платежный календарь (прогноз)"
               description="Как считаются цифры"
