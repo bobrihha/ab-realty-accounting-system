@@ -179,7 +179,8 @@ async function computeForecast(months: number) {
       where: {
         type: 'EXPENSE',
         status: 'PAID',
-        actualDate: { gte: from, lte: to }
+        actualDate: { gte: from, lte: to },
+        category: { notIn: EXCLUDED_PAYROLL_CATEGORIES }
       },
       _sum: { amount: true }
     })
