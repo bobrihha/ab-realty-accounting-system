@@ -197,6 +197,7 @@ enum Role {
   ROP
   ACCOUNTANT
   OWNER
+  LAWYER
 }
 
 enum Status {

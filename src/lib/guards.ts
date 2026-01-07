@@ -15,5 +15,9 @@ export async function requireSession(): Promise<SessionUser> {
 }
 
 export function canViewAllDeals(role: AppRole) {
-  return role === 'OWNER' || role === 'ACCOUNTANT'
+  return role === 'OWNER' || role === 'ACCOUNTANT' || role === 'LAWYER'
+}
+
+export function canAccessLegalServices(role: AppRole) {
+  return role === 'OWNER' || role === 'ACCOUNTANT' || role === 'LAWYER'
 }

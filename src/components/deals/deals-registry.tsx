@@ -12,7 +12,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Search, Plus, Edit, Trash2, Eye, RefreshCw, DollarSign } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Search, Plus, Edit, Trash2, Eye, RefreshCw, DollarSign, ChevronDown, X } from 'lucide-react'
 
 type DealStatus = 'DEPOSIT' | 'REGISTRATION' | 'WAITING_INVOICE' | 'WAITING_PAYMENT' | 'CLOSED' | 'CANCELLED'
 type ContractType = 'EXCLUSIVE' | 'SELECTION' | 'DEVELOPER' | 'SELLER'
@@ -75,7 +76,7 @@ export function DealsRegistry() {
   const [loading, setLoading] = useState(true)
 
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [agentFilter, setAgentFilter] = useState<string>('all')
   const [legalServicesFilter, setLegalServicesFilter] = useState<string>('all')
   const [contractTypeFilter, setContractTypeFilter] = useState<string>('all')
@@ -142,7 +143,7 @@ export function DealsRegistry() {
         deal.client.toLowerCase().includes(s) ||
         deal.object.toLowerCase().includes(s) ||
         deal.agent.name.toLowerCase().includes(s)
-      const matchesStatus = statusFilter === 'all' || deal.status === statusFilter
+      const matchesStatus = statusFilter.length === 0 || statusFilter.includes(deal.status)
       const matchesAgent = agentFilter === 'all' || deal.agent.id === agentFilter
       const matchesLegalServices =
         legalServicesFilter === 'all' ||
@@ -550,19 +551,62 @@ export function DealsRegistry() {
                 />
               </div>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Статус" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все статусы</SelectItem>
-                {Object.entries(statusConfig).map(([key, v]) => (
-                  <SelectItem key={key} value={key}>
-                    {v.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-[280px] justify-between">
+                  <div className="flex items-center gap-1 flex-wrap max-w-[220px]">
+                    {statusFilter.length === 0 ? (
+                      <span className="text-gray-500">Все статусы</span>
+                    ) : statusFilter.length <= 2 ? (
+                      statusFilter.map(s => (
+                        <Badge key={s} variant="secondary" className="text-xs">
+                          {statusConfig[s as DealStatus].label}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span>Выбрано: {statusFilter.length}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {statusFilter.length > 0 && (
+                      <X
+                        className="h-4 w-4 text-gray-400 hover:text-gray-600"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setStatusFilter([])
+                        }}
+                      />
+                    )}
+                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                  </div>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[220px] p-2">
+                <div className="space-y-2">
+                  {Object.entries(statusConfig).map(([key, v]) => (
+                    <div key={key} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`status-${key}`}
+                        checked={statusFilter.includes(key)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setStatusFilter(prev => [...prev, key])
+                          } else {
+                            setStatusFilter(prev => prev.filter(s => s !== key))
+                          }
+                        }}
+                      />
+                      <label
+                        htmlFor={`status-${key}`}
+                        className="text-sm cursor-pointer flex-1"
+                      >
+                        {v.label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
             <Select value={agentFilter} onValueChange={setAgentFilter}>
               <SelectTrigger className="w-[220px]">
                 <SelectValue placeholder="Агент" />
@@ -630,19 +674,20 @@ export function DealsRegistry() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Клиент</TableHead>
-                  <TableHead>Объект</TableHead>
                   <TableHead>Агент</TableHead>
                   <TableHead>Статус</TableHead>
-                  <TableHead>Дата брони</TableHead>
+                  <TableHead>Дата сделки</TableHead>
+                  <TableHead className="text-right">Комиссия агента</TableHead>
+                  <TableHead className="text-right">Комиссия РОПа</TableHead>
+                  <TableHead className="text-right">Налог</TableHead>
                   <TableHead className="text-right">Комиссия</TableHead>
-                  <TableHead className="text-right">Чистая прибыль</TableHead>
                   <TableHead>Действия</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredDeals.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                       Сделки не найдены
                     </TableCell>
                   </TableRow>
@@ -650,18 +695,21 @@ export function DealsRegistry() {
                   filteredDeals.map(deal => (
                     <TableRow key={deal.id} className="hover:bg-gray-50">
                       <TableCell className="font-medium">{deal.client}</TableCell>
-                      <TableCell className="max-w-xs truncate" title={deal.object}>
-                        {deal.object}
-                      </TableCell>
                       <TableCell>{deal.agent.name}</TableCell>
                       <TableCell>
                         <Badge className={statusConfig[deal.status].color}>{statusConfig[deal.status].label}</Badge>
                       </TableCell>
-                      <TableCell>{formatDate(deal.depositDate)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(deal.commission)}</TableCell>
+                      <TableCell>{deal.dealDate ? formatDate(deal.dealDate) : '-'}</TableCell>
                       <TableCell className="text-right font-medium">
-                        {deal.netProfit != null ? formatCurrency(deal.netProfit) : '-'}
+                        {deal.agentCommission != null ? formatCurrency(deal.agentCommission) : '-'}
                       </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {deal.ropCommission != null ? formatCurrency(deal.ropCommission) : '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(deal.commission * deal.taxRate / 100)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(deal.commission)}</TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
                           <Button variant="ghost" size="sm" onClick={() => (setSelectedDeal(deal), setIsViewDialogOpen(true))}>

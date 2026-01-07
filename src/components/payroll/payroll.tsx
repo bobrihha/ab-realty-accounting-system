@@ -108,6 +108,16 @@ export function Payroll() {
     })
   }, [accruals, yearFilter, monthFilter, quarterFilter])
 
+  // ВСЕ невыплаченные начисления (независимо от фильтра периода) - для таба "К выплате"
+  const allUnpaidAccruals = useMemo(() => {
+    return accruals.filter(a => a.remaining > 0)
+  }, [accruals])
+
+  // Общая сумма к выплате (накопленная со всех периодов)
+  const totalUnpaidAll = useMemo(() => {
+    return allUnpaidAccruals.reduce((s, a) => s + a.remaining, 0)
+  }, [allUnpaidAccruals])
+
   // Группировка по сотрудникам
   const employeeSummary = useMemo(() => {
     const summary: Record<string, { name: string; type: string; accrued: number; paid: number; remaining: number }> = {}
@@ -123,6 +133,51 @@ export function Payroll() {
 
     return Object.entries(summary).map(([id, data]) => ({ id, ...data }))
   }, [filteredAccruals])
+
+  // Группировка невыплаченных по сотрудникам (все периоды)
+  const unpaidEmployeeSummary = useMemo(() => {
+    const summary: Record<string, { name: string; type: string; accrued: number; paid: number; remaining: number }> = {}
+
+    allUnpaidAccruals.forEach(a => {
+      if (!summary[a.employee.id]) {
+        summary[a.employee.id] = { name: a.employee.name, type: a.type, accrued: 0, paid: 0, remaining: 0 }
+      }
+      summary[a.employee.id].accrued += a.amount
+      summary[a.employee.id].paid += a.paid
+      summary[a.employee.id].remaining += a.remaining
+    })
+
+    return Object.entries(summary).map(([id, data]) => ({ id, ...data }))
+  }, [allUnpaidAccruals])
+
+  // Все выплаты для истории
+  const allPayments = useMemo(() => {
+    const payments: Array<{
+      id: string
+      amount: number
+      paidAt: string
+      employeeName: string
+      employeeType: string
+      dealClient: string
+      accountName: string
+    }> = []
+
+    accruals.forEach(a => {
+      a.payments.forEach(p => {
+        payments.push({
+          id: p.id,
+          amount: p.amount,
+          paidAt: p.paidAt,
+          employeeName: a.employee.name,
+          employeeType: a.type,
+          dealClient: a.deal.client,
+          accountName: p.account.name
+        })
+      })
+    })
+
+    return payments.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())
+  }, [accruals])
 
   // Средняя ЗП по месяцам
   const monthlyAverageSalary = useMemo(() => {
@@ -215,12 +270,14 @@ export function Payroll() {
         throw new Error(data?.error || 'Не удалось создать выплату')
       }
 
-      // Сохраняем данные для документа
-      setLastPayment({
+      // Автоматически скачиваем РКО
+      const paymentData = {
         employee: paying.employee.name,
         amount: parseFloat(payForm.amount) || 0,
         date: payForm.paidAt
-      })
+      }
+      setLastPayment(paymentData)
+      downloadRKO(paymentData)
 
       setPaying(null)
       await load()
@@ -229,39 +286,61 @@ export function Payroll() {
     }
   }
 
-  const generatePaymentDocument = () => {
-    if (!lastPayment) return
-
+  // Функция для скачивания РКО по данным выплаты
+  const downloadRKO = (payment: { employee: string; amount: number; date: string }) => {
+    const docNumber = `${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`
     const doc = `
-РАСХОДНЫЙ КАССОВЫЙ ОРДЕР
+═══════════════════════════════════════════════════════════════════
+                    РАСХОДНЫЙ КАССОВЫЙ ОРДЕР № ${docNumber}
+═══════════════════════════════════════════════════════════════════
 
-Дата: ${fmtDate(lastPayment.date)}
+Дата составления: ${fmtDate(payment.date)}
 
-Выдать: ${lastPayment.employee}
-Сумма: ${fmtMoney(lastPayment.amount)}
-(${numberToWords(lastPayment.amount)})
+───────────────────────────────────────────────────────────────────
+ВЫДАТЬ: ${payment.employee}
+───────────────────────────────────────────────────────────────────
 
-Основание: Выплата заработной платы
+СУММА: ${fmtMoney(payment.amount)}
+Прописью: ${numberToWords(payment.amount)}
 
-Приложение: __________________________________
+ОСНОВАНИЕ: Выплата заработной платы
 
-Руководитель: ________________ / ____________ /
+ПРИЛОЖЕНИЕ: ________________________________________________
 
-Главный бухгалтер: ________________ / ____________ /
+───────────────────────────────────────────────────────────────────
 
-Получил: ________________ / ${lastPayment.employee} /
+Руководитель организации: _____________ / __________________ /
+                             подпись         расшифровка
 
-Дата: ${fmtDate(lastPayment.date)}
+Главный бухгалтер:        _____________ / __________________ /
+                             подпись         расшифровка
+
+───────────────────────────────────────────────────────────────────
+                         РАСПИСКА
+
+Сумму ${fmtMoney(payment.amount)} получил(а): 
+
+${payment.employee}
+
+Подпись получателя: _____________
+
+Дата получения: ${fmtDate(payment.date)}
+
+═══════════════════════════════════════════════════════════════════
     `.trim()
 
-    // Создаём и скачиваем файл
     const blob = new Blob([doc], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `РКО_${lastPayment.employee.replace(/\s/g, '_')}_${lastPayment.date}.txt`
+    a.download = `РКО_${payment.employee.replace(/\s/g, '_')}_${payment.date}.txt`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const generatePaymentDocument = () => {
+    if (!lastPayment) return
+    downloadRKO(lastPayment)
     setLastPayment(null)
   }
 
@@ -430,10 +509,13 @@ export function Payroll() {
         </Card>
         <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-orange-800">К выплате</CardTitle>
+            <CardTitle className="text-sm text-orange-800">К выплате (всего)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-900">{fmtMoney(totals.totalRemaining)}</div>
+            <div className="text-2xl font-bold text-orange-900">{fmtMoney(totalUnpaidAll)}</div>
+            {totalUnpaidAll !== totals.totalRemaining && (
+              <div className="text-xs text-orange-600 mt-1">За период: {fmtMoney(totals.totalRemaining)}</div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -529,14 +611,67 @@ export function Payroll() {
               </Table>
             </CardContent>
           </Card>
+
+          {/* История выплат */}
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="text-lg">История выплат</CardTitle>
+              <CardDescription>Все выплаты с возможностью скачать РКО</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Дата</TableHead>
+                    <TableHead>Сотрудник</TableHead>
+                    <TableHead>Сделка</TableHead>
+                    <TableHead>Счёт</TableHead>
+                    <TableHead className="text-right">Сумма</TableHead>
+                    <TableHead className="w-[100px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {allPayments.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                        Нет выплат
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    allPayments.slice(0, 50).map(p => (
+                      <TableRow key={p.id}>
+                        <TableCell>{fmtDate(p.paidAt)}</TableCell>
+                        <TableCell className="font-medium">
+                          {p.employeeName} <span className="text-gray-500">({p.employeeType === 'AGENT' ? 'Агент' : 'РОП'})</span>
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate">{p.dealClient}</TableCell>
+                        <TableCell>{p.accountName}</TableCell>
+                        <TableCell className="text-right font-medium text-green-700">{fmtMoney(p.amount)}</TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => downloadRKO({ employee: p.employeeName, amount: p.amount, date: p.paidAt })}
+                          >
+                            <FileText className="h-4 w-4 mr-1" />
+                            РКО
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        {/* Таб 3: К выплате */}
+        {/* Таб 3: К выплате - показываем ВСЕ невыплаченные суммы */}
         <TabsContent value="remaining">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">К выплате</CardTitle>
-              <CardDescription>Остаток к выплате по сотрудникам</CardDescription>
+              <CardTitle className="text-lg">К выплате (все периоды)</CardTitle>
+              <CardDescription>Остаток к выплате по сотрудникам за все периоды (накопленный долг)</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -550,14 +685,14 @@ export function Payroll() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {employeeSummary.filter(e => e.remaining > 0).length === 0 ? (
+                  {unpaidEmployeeSummary.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-gray-500">
                         Все выплачено
                       </TableCell>
                     </TableRow>
                   ) : (
-                    employeeSummary.filter(e => e.remaining > 0).map(e => (
+                    unpaidEmployeeSummary.map(e => (
                       <TableRow key={e.id}>
                         <TableCell className="font-medium">{e.name}</TableCell>
                         <TableCell>{e.type === 'AGENT' ? 'Агент' : 'РОП'}</TableCell>
@@ -569,19 +704,20 @@ export function Payroll() {
                   )}
                   <TableRow className="bg-gray-50 font-bold">
                     <TableCell colSpan={2}>Итого</TableCell>
-                    <TableCell className="text-right">{fmtMoney(totals.totalAccrued)}</TableCell>
-                    <TableCell className="text-right text-green-700">{fmtMoney(totals.totalPaid)}</TableCell>
-                    <TableCell className="text-right text-orange-700">{fmtMoney(totals.totalRemaining)}</TableCell>
+                    <TableCell className="text-right">{fmtMoney(unpaidEmployeeSummary.reduce((s, e) => s + e.accrued, 0))}</TableCell>
+                    <TableCell className="text-right text-green-700">{fmtMoney(unpaidEmployeeSummary.reduce((s, e) => s + e.paid, 0))}</TableCell>
+                    <TableCell className="text-right text-orange-700">{fmtMoney(totalUnpaidAll)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
 
-          {/* Детальный список начислений к выплате */}
+          {/* Детальный список начислений к выплате - ВСЕ невыплаченные */}
           <Card className="mt-4">
             <CardHeader>
               <CardTitle className="text-lg">Детализация начислений к выплате</CardTitle>
+              <CardDescription>Все невыплаченные начисления за все периоды</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -597,14 +733,14 @@ export function Payroll() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAccruals.filter(a => a.remaining > 0).length === 0 ? (
+                  {allUnpaidAccruals.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                         Нет начислений к выплате
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredAccruals.filter(a => a.remaining > 0).map(a => (
+                    allUnpaidAccruals.map(a => (
                       <TableRow key={a.id}>
                         <TableCell className="font-medium">
                           {a.employee.name} <span className="text-gray-500">({a.type === 'AGENT' ? 'Агент' : 'РОП'})</span>

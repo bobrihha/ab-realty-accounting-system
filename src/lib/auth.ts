@@ -3,7 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import { compare } from 'bcryptjs'
 import { db } from '@/lib/db'
 
-export type AppRole = 'AGENT' | 'ROP' | 'OWNER' | 'ACCOUNTANT'
+export type AppRole = 'AGENT' | 'ROP' | 'OWNER' | 'ACCOUNTANT' | 'LAWYER'
 
 function normalizeRole(role: string | null | undefined): AppRole {
   switch ((role ?? '').toUpperCase()) {
@@ -15,6 +15,8 @@ function normalizeRole(role: string | null | undefined): AppRole {
       return 'ACCOUNTANT'
     case 'OWNER':
       return 'OWNER'
+    case 'LAWYER':
+      return 'LAWYER'
     default:
       return 'AGENT'
   }
@@ -55,19 +57,19 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.sub = (user as any).id
-        ;(token as any).role = (user as any).role
+          ; (token as any).role = (user as any).role
       } else {
         // Backward/edge-case compatibility: if role is missing in an existing token, hydrate it from DB.
         if (token.sub && !(token as any).role) {
           const employee = await db.employee.findUnique({ where: { id: token.sub } })
-          ;(token as any).role = normalizeRole(employee?.role)
+            ; (token as any).role = normalizeRole(employee?.role)
         }
       }
       return token
     },
     async session({ session, token }) {
-      ;(session as any).userId = token.sub
-      ;(session as any).role = (token as any).role
+      ; (session as any).userId = token.sub
+        ; (session as any).role = (token as any).role
       return session
     }
   }

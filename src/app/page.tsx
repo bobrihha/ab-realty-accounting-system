@@ -63,6 +63,8 @@ export default function Dashboard() {
         return 'Бухгалтер'
       case 'ROP':
         return 'РОП'
+      case 'LAWYER':
+        return 'Юрист'
       case 'AGENT':
       default:
         return 'Агент'
@@ -371,7 +373,7 @@ export default function Dashboard() {
             {(role === 'OWNER' || role === 'ACCOUNTANT') && (
               <TabsTrigger value="payroll">Выплаты</TabsTrigger>
             )}
-            {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+            {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'LAWYER') && (
               <TabsTrigger value="legal">Юр.услуги</TabsTrigger>
             )}
             {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
@@ -411,7 +413,7 @@ export default function Dashboard() {
           )}
 
           {/* Legal Services Tab */}
-          {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+          {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'LAWYER') && (
             <TabsContent value="legal">
               <LegalServicesRegistry />
             </TabsContent>
