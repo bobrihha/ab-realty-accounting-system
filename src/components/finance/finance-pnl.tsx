@@ -107,6 +107,9 @@ const expenseCategories = [
 export function FinancePNL() {
   const currentYear = new Date().getFullYear()
   const [selectedYear, setSelectedYear] = useState(String(currentYear))
+  const [selectedMonth, setSelectedMonth] = useState<string>('all')
+  const [selectedQuarter, setSelectedQuarter] = useState<string>('all')
+  const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [financialData, setFinancialData] = useState<FinancialData[]>([])
   const [metrics, setMetrics] = useState<FinanceMetrics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -139,6 +142,9 @@ export function FinancePNL() {
 
   useEffect(() => {
     setLegalMonthFilter('all')
+    setSelectedMonth('all')
+    setSelectedQuarter('all')
+    setSelectedCategory('all')
   }, [selectedYear])
 
   const formatCurrency = (amount: number) => {
@@ -231,9 +237,26 @@ export function FinancePNL() {
 
 
 
-  const totalRevenue = financialData.reduce((sum, data) => sum + data.revenue, 0)
-  const totalIncome = financialData.reduce((sum, data) => sum + (data.netProfitFromDeals ?? 0), 0)
-  const totalExpenses = financialData.reduce((sum, data) => sum + (data.totalExpenses ?? 0), 0)
+  // Фильтрация данных по месяцу и кварталу
+  const filteredFinancialData = financialData.filter(data => {
+    // Месяц из monthKey: "2026-01" -> 1
+    const monthNum = parseInt(data.monthKey.split('-')[1], 10)
+
+    // Фильтр по кварталу
+    if (selectedQuarter !== 'all') {
+      const quarter = Math.ceil(monthNum / 3)
+      if (String(quarter) !== selectedQuarter) return false
+    }
+
+    // Фильтр по месяцу
+    if (selectedMonth !== 'all' && String(monthNum) !== selectedMonth) return false
+
+    return true
+  })
+
+  const totalRevenue = filteredFinancialData.reduce((sum, data) => sum + data.revenue, 0)
+  const totalIncome = filteredFinancialData.reduce((sum, data) => sum + (data.netProfitFromDeals ?? 0), 0)
+  const totalExpenses = filteredFinancialData.reduce((sum, data) => sum + (data.totalExpenses ?? 0), 0)
   const totalProfit = totalIncome - totalExpenses
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
 
@@ -264,20 +287,23 @@ export function FinancePNL() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Финансы / P&L</h2>
-          <p className="text-gray-500">Отчет о прибылях и убытках</p>
-        </div>
-        <div className="flex items-center space-x-2">
+      <div className="flex flex-col gap-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Финансы / P&L</h2>
+            <p className="text-gray-500">Отчет о прибылях и убытках</p>
+          </div>
           <Button variant="outline" size="sm" onClick={handleExportExcel}>
             <FileText className="h-4 w-4 mr-2" />
             Excel
           </Button>
+        </div>
 
+        {/* Фильтры */}
+        <div className="flex flex-wrap gap-2 items-center">
           <Select value={selectedYear} onValueChange={setSelectedYear}>
-            <SelectTrigger className="w-[120px]">
-              <SelectValue />
+            <SelectTrigger className="w-[100px]">
+              <SelectValue placeholder="Год" />
             </SelectTrigger>
             <SelectContent>
               {yearOptions.map((y) => (
@@ -287,6 +313,46 @@ export function FinancePNL() {
               ))}
             </SelectContent>
           </Select>
+
+          <Select value={selectedQuarter} onValueChange={(v) => { setSelectedQuarter(v); if (v !== 'all') setSelectedMonth('all') }}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue placeholder="Квартал" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все кварталы</SelectItem>
+              <SelectItem value="1">Q1 (янв-мар)</SelectItem>
+              <SelectItem value="2">Q2 (апр-июн)</SelectItem>
+              <SelectItem value="3">Q3 (июл-сен)</SelectItem>
+              <SelectItem value="4">Q4 (окт-дек)</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={selectedMonth} onValueChange={(v) => { setSelectedMonth(v); if (v !== 'all') setSelectedQuarter('all') }}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="Месяц" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все месяцы</SelectItem>
+              <SelectItem value="1">Январь</SelectItem>
+              <SelectItem value="2">Февраль</SelectItem>
+              <SelectItem value="3">Март</SelectItem>
+              <SelectItem value="4">Апрель</SelectItem>
+              <SelectItem value="5">Май</SelectItem>
+              <SelectItem value="6">Июнь</SelectItem>
+              <SelectItem value="7">Июль</SelectItem>
+              <SelectItem value="8">Август</SelectItem>
+              <SelectItem value="9">Сентябрь</SelectItem>
+              <SelectItem value="10">Октябрь</SelectItem>
+              <SelectItem value="11">Ноябрь</SelectItem>
+              <SelectItem value="12">Декабрь</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {(selectedMonth !== 'all' || selectedQuarter !== 'all') && (
+            <Button variant="ghost" size="sm" onClick={() => { setSelectedMonth('all'); setSelectedQuarter('all') }}>
+              Сбросить
+            </Button>
+          )}
         </div>
       </div>
 
@@ -801,7 +867,7 @@ export function FinancePNL() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {financialData.map((data) => {
+                    {filteredFinancialData.map((data) => {
                       const income = data.netProfitFromDeals ?? 0
                       const expenses = data.totalExpenses ?? 0
                       const profit = income - expenses
