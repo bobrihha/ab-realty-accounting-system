@@ -151,8 +151,13 @@ async function computeForecast(months: number) {
   const expectedIncome = expectedTotal._sum.netProfit ?? 0
 
   // Повторяющиеся расходы — загружаем список для проверки по категориям
+  // Исключаем ЗП агентам/РОП - уже учтены в netProfit
   const recurringExpensesList = await db.cashFlow.findMany({
-    where: { type: 'EXPENSE', isRecurring: true },
+    where: {
+      type: 'EXPENSE',
+      isRecurring: true,
+      category: { notIn: EXCLUDED_PAYROLL_CATEGORIES }
+    },
     select: { id: true, category: true, amount: true }
   })
 
