@@ -98,6 +98,44 @@ export function Treasury() {
   const [isEditAccountDialogOpen, setIsEditAccountDialogOpen] = useState(false)
 
   const [editingCashFlow, setEditingCashFlow] = useState<CashFlowItem | null>(null)
+
+  // Filters for Operations
+  const [opsFilterYear, setOpsFilterYear] = useState<string>('all')
+  const [opsFilterQuarter, setOpsFilterQuarter] = useState<string>('all')
+  const [opsFilterMonth, setOpsFilterMonth] = useState<string>('all')
+  const [opsFilterCategory, setOpsFilterCategory] = useState<string>('all')
+  const [opsFilterStatus, setOpsFilterStatus] = useState<string>('all')
+
+  const filteredCashFlow = useMemo(() => {
+    return cashFlow.filter(c => {
+      // 1. Filter by Category
+      if (opsFilterCategory !== 'all' && c.category !== opsFilterCategory) return false
+
+      // 2. Filter by Status
+      if (opsFilterStatus !== 'all' && c.status !== opsFilterStatus) return false
+
+      // Date logic
+      const dateStr = c.actualDate || c.plannedDate
+      if (!dateStr) return false
+      const d = new Date(dateStr)
+      const year = d.getFullYear()
+      const month = d.getMonth() + 1
+      const quarter = Math.ceil(month / 3)
+
+      // 3. Filter by Year
+      // Default to showing only current and next year if 'all', or implement specific logic?
+      // For now 'all' means everything loaded (which is usually all history)
+      if (opsFilterYear !== 'all' && year !== Number(opsFilterYear)) return false
+
+      // 4. Filter by Quarter
+      if (opsFilterQuarter !== 'all' && quarter !== Number(opsFilterQuarter)) return false
+
+      // 5. Filter by Month
+      if (opsFilterMonth !== 'all' && month !== Number(opsFilterMonth)) return false
+
+      return true
+    })
+  }, [cashFlow, opsFilterYear, opsFilterQuarter, opsFilterMonth, opsFilterCategory, opsFilterStatus])
   const [isEditCashFlowDialogOpen, setIsEditCashFlowDialogOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
 
@@ -1157,30 +1195,89 @@ export function Treasury() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-lg">Операции</CardTitle>
-            <MetricHelp
-              title="Операции"
-              description="Что значит План/Факт"
-              trigger={<CircleHelp className="h-5 w-5 text-gray-500" />}
-              summary="Единый список всех денежных операций: планируем и отмечаем оплату."
-              details={
-                <div className="space-y-2">
-                  <div className="font-medium">План</div>
-                  <div className="text-muted-foreground">
-                    Деньги еще не списаны/не получены. Такая операция влияет только на прогноз в календаре.
-                  </div>
-                  <div className="font-medium">Факт (оплачено)</div>
-                  <div className="text-muted-foreground">
-                    Деньги реально пришли или ушли со счета. При переводе в «Факт» баланс выбранного счета автоматически меняется.
-                  </div>
-                  <div className="text-muted-foreground">
-                    «Оплатить» — это быстрый способ перевести плановую операцию в факт.
-                  </div>
+          <CardHeader>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-row items-center justify-between space-y-0">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-lg">Операции</CardTitle>
+                  <MetricHelp
+                    title="Операции"
+                    description="Что значит План/Факт"
+                    trigger={<CircleHelp className="h-5 w-5 text-gray-500" />}
+                    summary="Единый список всех денежных операций: планируем и отмечаем оплату."
+                    details={
+                      <div className="space-y-2">
+                        <div className="font-medium">План</div>
+                        <div className="text-muted-foreground">
+                          Деньги еще не списаны/не получены. Такая операция влияет только на прогноз в календаре.
+                        </div>
+                        <div className="font-medium">Факт (оплачено)</div>
+                        <div className="text-muted-foreground">
+                          Деньги реально пришли или ушли со счета. При переводе в «Факт» баланс выбранного счета автоматически меняется.
+                        </div>
+                        <div className="text-muted-foreground">
+                          «Оплатить» — это быстрый способ перевести плановую операцию в факт.
+                        </div>
+                      </div>
+                    }
+                  />
                 </div>
-              }
-            />
-            <CardDescription>Единая база всех транзакций (план/факт)</CardDescription>
+                <CardDescription>Единая база всех транзакций (план/факт)</CardDescription>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <select
+                  className="border rounded-md px-3 py-1.5 text-sm"
+                  value={opsFilterYear}
+                  onChange={e => setOpsFilterYear(e.target.value)}
+                >
+                  <option value="all">Все годы</option>
+                  {Array.from({ length: 5 }, (_, i) => currentYear - i + 1).map(y => (
+                    <option key={y} value={String(y)}>{y}</option>
+                  ))}
+                </select>
+                <select
+                  className="border rounded-md px-3 py-1.5 text-sm"
+                  value={opsFilterQuarter}
+                  onChange={e => setOpsFilterQuarter(e.target.value)}
+                >
+                  <option value="all">Все кварталы</option>
+                  <option value="1">Q1 (янв-мар)</option>
+                  <option value="2">Q2 (апр-июн)</option>
+                  <option value="3">Q3 (июл-сен)</option>
+                  <option value="4">Q4 (окт-дек)</option>
+                </select>
+                <select
+                  className="border rounded-md px-3 py-1.5 text-sm"
+                  value={opsFilterMonth}
+                  onChange={e => setOpsFilterMonth(e.target.value)}
+                >
+                  <option value="all">Все месяцы</option>
+                  {['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'].map((m, i) => (
+                    <option key={i + 1} value={String(i + 1)}>{m}</option>
+                  ))}
+                </select>
+                <select
+                  className="border rounded-md px-3 py-1.5 text-sm max-w-[200px]"
+                  value={opsFilterCategory}
+                  onChange={e => setOpsFilterCategory(e.target.value)}
+                >
+                  <option value="all">Все категории</option>
+                  {EXPENSE_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <select
+                  className="border rounded-md px-3 py-1.5 text-sm"
+                  value={opsFilterStatus}
+                  onChange={e => setOpsFilterStatus(e.target.value)}
+                >
+                  <option value="all">Все статусы</option>
+                  <option value="PLANNED">План</option>
+                  <option value="PAID">Факт</option>
+                </select>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -1197,7 +1294,13 @@ export function Treasury() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {cashFlow.map(c => (
+                {filteredCashFlow.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                      Операции не найдены
+                    </TableCell>
+                  </TableRow>
+                ) : filteredCashFlow.map(c => (
                   <TableRow key={c.id}>
                     <TableCell>{c.type === 'INCOME' ? 'Приход' : 'Расход'}</TableCell>
                     <TableCell>{c.category}</TableCell>
