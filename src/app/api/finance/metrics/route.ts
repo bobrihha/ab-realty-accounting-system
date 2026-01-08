@@ -330,9 +330,9 @@ export async function GET(request: NextRequest) {
     }
 
     const monthRows = months.map(m => {
-      // Средний % ставки = сумма ставок / количество сделок
-      const agentPct = m._dealCount > 0 ? m._agentRateSum / m._dealCount : 0
-      const ropPct = m._dealCount > 0 ? m._ropRateSum / m._dealCount : 0
+      // Средневзвешенный % = (комиссия / выручка) * 100
+      const agentPct = m.dealRevenue > 0 ? (m.agentCommission / m.dealRevenue) * 100 : 0
+      const ropPct = m.dealRevenue > 0 ? (m.ropCommission / m.dealRevenue) * 100 : 0
       const sumPct = agentPct + ropPct
       const margin = m.dealRevenue > 0 ? (m.netProfit / m.dealRevenue) * 100 : 0
       return {
