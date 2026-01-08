@@ -239,8 +239,8 @@ async function computeForecast(months: number, year: number | null = null) {
     // actualExpenses по дате оплаты (для отображения в колонке "Факт расходов")
     const actualExpenseSum = actualExpenses._sum.amount ?? 0
 
-    // Расчёт дохода для месяца
-    let monthExpectedIncome = 0
+    // Расчёт дохода от сделок
+    let dealsIncome = 0
     if (isHistoricalView) {
       // Для исторического просмотра: берём сумму netProfit закрытых сделок за этот месяц
       const closedDealsInMonth = await db.deal.aggregate({
@@ -250,11 +250,60 @@ async function computeForecast(months: number, year: number | null = null) {
         },
         _sum: { netProfit: true }
       })
-      monthExpectedIncome = closedDealsInMonth._sum.netProfit ?? 0
+      dealsIncome = closedDealsInMonth._sum.netProfit ?? 0
     } else {
-      // Для прогноза: весь ожидаемый доход показываем в первом месяце
-      monthExpectedIncome = i === 0 ? expectedIncomeForForecast : 0
+      // Для прогноза: весь ожидаемый доход от сделок показываем в первом месяце
+      dealsIncome = i === 0 ? expectedIncomeForForecast : 0
     }
+
+    // Расчёт ручного дохода из операций (INCOME)
+    // Учитываем и PLANNED и PAID, так как PAID уже увеличил баланс (в openingBalance),
+    // но для отображения в колонке "Ожидаю приход" (или "Приход") мы хотим видеть общую сумму приходов за месяц?
+    // В текущей логике:
+    // Closing = Opening + Income - Expense
+    // Если Income был PAID, он уже в Opening следующего месяца (через баланс счета).
+    // Значит, если мы добавляем PAID Income сюда, мы задвоим?
+    // Проверим формулу: Closing = (OpeningBalance_start + PaidIncome) + (ExpectedIncome) - ...
+    // Нет, OpeningBalance берется на начало итерации.
+    // Если операция была PAID в прошлом, она в OpeningBalance.
+    // Если операция PAID в ЭТОМ месяце, она тоже уже в OpeningBalance (если мы берем текущий баланс счетов как старт).
+    // НО: мы берем `openingBalance = accounts.reduce` ТОЛЬКО для первого месяца (i=0).
+    // И этот баланс УЖЕ включает все PAID операции.
+    // Значит, для i=0, добавлять PAID Income НЕЛЬЗЯ (он уже в балансе).
+    // А для будущих месяцев (i>0)?
+    // OpeningBalance[i] = ClosingBalance[i-1].
+    // Значит, логика "Закрытие = Открытие + Приход - Расход" строит цепочку.
+
+    // ВАЖНО:
+    // Если мы хотим, чтобы колонка "Ожидаю приход" показывала ВСЕ приходы месяца, но формула баланса не ломалась.
+    // Формула: Closing = Opening + MonthIncome - PlannedExpense.
+    // Если MonthIncome включает PAID (который уже в Opening), то Closing будет завышен.
+
+    // ДАВАЙТЕ РАЗДЕЛИМ:
+    // 1. Manual Planned Income (еще не получен) -> Добавляем в баланс.
+    // 2. Manual Paid Income (уже получен) -> НЕ добавляем в баланс (уже там), НО можем показать в UI чисто информативно?
+    // Клиент спрашивает: "в отчет сбить приход в месяц".
+    // Видимо, он хочет видеть цифру.
+    // Но если мы добавим ее в `expectedIncome`, она сломает `closingBalance`.
+
+    // РЕШЕНИЕ:
+    // Income = DealsIncome (NetProfit) + ManualPlannedIncome.
+    // ManualPaidIncome игнорируем для расчета баланса (он уже в `openingBalance`),
+    // НО в UI можно вывести отдельной строкой или тултипом.
+    // Однако, `monthExpectedIncome` используется для расчета `closingBalance`.
+
+    // Добавим Manual Planned Income:
+    const manualPlannedIncome = await db.cashFlow.aggregate({
+      where: {
+        type: 'INCOME',
+        status: 'PLANNED',
+        plannedDate: { gte: from, lte: to }
+      },
+      _sum: { amount: true }
+    })
+    const manualIncomeSum = manualPlannedIncome._sum.amount ?? 0
+
+    const monthExpectedIncome = dealsIncome + manualIncomeSum
 
     // Закрытие = Открытие + Ожидаемый приход - План расходов
     // (Факт расходов НЕ вычитаем, т.к. он уже уменьшил баланс счетов при оплате)
