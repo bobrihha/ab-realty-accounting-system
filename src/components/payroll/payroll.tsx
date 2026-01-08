@@ -92,7 +92,7 @@ export function Payroll() {
     })
   }, [load])
 
-  // Фильтрация по периоду
+  // Фильтрация по периоду с учетом переноса долгов (хвостов)
   const filteredAccruals = useMemo(() => {
     return accruals.filter(a => {
       const date = new Date(a.deal.dealDate || a.accruedAt)
@@ -100,11 +100,35 @@ export function Payroll() {
       const month = date.getMonth() + 1
       const quarter = Math.ceil(month / 3)
 
-      if (yearFilter !== 'all' && year !== Number(yearFilter)) return false
-      if (monthFilter !== 'all' && month !== Number(monthFilter)) return false
-      if (quarterFilter !== 'all' && quarter !== Number(quarterFilter)) return false
+      const filterYearNum = yearFilter !== 'all' ? Number(yearFilter) : null
+      const filterMonthNum = monthFilter !== 'all' ? Number(monthFilter) : null
+      const filterQuarterNum = quarterFilter !== 'all' ? Number(quarterFilter) : null
 
-      return true
+      // 1. Попадает ли запись в выбранный период?
+      let inPeriod = true
+      if (filterYearNum !== null && year !== filterYearNum) inPeriod = false
+      if (inPeriod && filterMonthNum !== null && month !== filterMonthNum) inPeriod = false
+      if (inPeriod && filterQuarterNum !== null && quarter !== filterQuarterNum) inPeriod = false
+
+      if (inPeriod) return true
+
+      // 2. Если не попадает, проверяем, является ли это "хвостом" (прошлый долг)
+      // Хвост = есть долг (remaining > 0) И дата МЕНЬШЕ начала выбранного периода
+      if (a.remaining > 0) {
+        if (filterYearNum !== null) {
+          if (year < filterYearNum) return true // Долг за прошлый год
+          if (year > filterYearNum) return false // Будущее
+
+          // Год совпадает, проверяем месяц/квартал
+          if (filterMonthNum !== null) {
+            if (month < filterMonthNum) return true // Долг за прошлый месяц этого года
+          } else if (filterQuarterNum !== null) {
+            if (quarter < filterQuarterNum) return true // Долг за прошлый квартал этого года
+          }
+        }
+      }
+
+      return false
     })
   }, [accruals, yearFilter, monthFilter, quarterFilter])
 
