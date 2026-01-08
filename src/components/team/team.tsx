@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Plus, RefreshCw, Edit, Trash2 } from 'lucide-react'
 
-type Role = 'AGENT' | 'ROP' | 'ACCOUNTANT' | 'OWNER'
+type Role = 'AGENT' | 'ROP' | 'ACCOUNTANT' | 'OWNER' | 'LAWYER'
 type Status = 'ACTIVE' | 'INACTIVE'
 
 type CommissionRate = {
@@ -46,7 +46,8 @@ const roleLabels: Record<Role, string> = {
   AGENT: 'Агент',
   ROP: 'РОП',
   ACCOUNTANT: 'Бухгалтер',
-  OWNER: 'Владелец'
+  OWNER: 'Владелец',
+  LAWYER: 'Юрист'
 }
 
 type StatsPeriod = 'week' | 'month' | 'year'
@@ -154,10 +155,28 @@ export function Team() {
     const series =
       statsPeriod === 'month'
         ? Array.from({ length: 12 }, (_, i) => {
-            const date = subMonths(new Date(now.getFullYear(), now.getMonth(), 1), i)
-            const from = startOfMonth(date)
-            const to = endOfMonth(date)
-            const label = format(date, 'LLLL yyyy', { locale: ru })
+          const date = subMonths(new Date(now.getFullYear(), now.getMonth(), 1), i)
+          const from = startOfMonth(date)
+          const to = endOfMonth(date)
+          const label = format(date, 'LLLL yyyy', { locale: ru })
+          const hires = agents.filter(a => {
+            const d = a.hireDate ? new Date(a.hireDate) : null
+            return d ? d >= from && d <= to : false
+          }).length
+          const fires = agents.filter(a => {
+            if (!a.terminationDate) return false
+            const d = new Date(a.terminationDate)
+            return d >= from && d <= to
+          }).length
+          return { key: mk(date), label, hires, fires }
+        }).reverse()
+        : statsPeriod === 'week'
+          ? Array.from({ length: 12 }, (_, i) => {
+            const date = subWeeks(now, i)
+            const from = startOfWeek(date, { weekStartsOn: 1 })
+            const to = endOfWeek(date, { weekStartsOn: 1 })
+            const label = `${format(from, 'dd.MM', { locale: ru })}–${format(to, 'dd.MM', { locale: ru })}`
+            const key = `${format(from, 'yyyy-LL-dd')}`
             const hires = agents.filter(a => {
               const d = a.hireDate ? new Date(a.hireDate) : null
               return d ? d >= from && d <= to : false
@@ -167,43 +186,25 @@ export function Team() {
               const d = new Date(a.terminationDate)
               return d >= from && d <= to
             }).length
-            return { key: mk(date), label, hires, fires }
+            return { key, label, hires, fires }
           }).reverse()
-        : statsPeriod === 'week'
-          ? Array.from({ length: 12 }, (_, i) => {
-              const date = subWeeks(now, i)
-              const from = startOfWeek(date, { weekStartsOn: 1 })
-              const to = endOfWeek(date, { weekStartsOn: 1 })
-              const label = `${format(from, 'dd.MM', { locale: ru })}–${format(to, 'dd.MM', { locale: ru })}`
-              const key = `${format(from, 'yyyy-LL-dd')}`
-              const hires = agents.filter(a => {
-                const d = a.hireDate ? new Date(a.hireDate) : null
-                return d ? d >= from && d <= to : false
-              }).length
-              const fires = agents.filter(a => {
-                if (!a.terminationDate) return false
-                const d = new Date(a.terminationDate)
-                return d >= from && d <= to
-              }).length
-              return { key, label, hires, fires }
-            }).reverse()
           : Array.from({ length: 5 }, (_, i) => {
-              const date = subYears(new Date(now.getFullYear(), 0, 1), i)
-              const year = date.getFullYear()
-              const from = new Date(year, 0, 1)
-              const to = new Date(year, 11, 31, 23, 59, 59, 999)
-              const label = String(year)
-              const hires = agents.filter(a => {
-                const d = a.hireDate ? new Date(a.hireDate) : null
-                return d ? d >= from && d <= to : false
-              }).length
-              const fires = agents.filter(a => {
-                if (!a.terminationDate) return false
-                const d = new Date(a.terminationDate)
-                return d >= from && d <= to
-              }).length
-              return { key: label, label, hires, fires }
-            }).reverse()
+            const date = subYears(new Date(now.getFullYear(), 0, 1), i)
+            const year = date.getFullYear()
+            const from = new Date(year, 0, 1)
+            const to = new Date(year, 11, 31, 23, 59, 59, 999)
+            const label = String(year)
+            const hires = agents.filter(a => {
+              const d = a.hireDate ? new Date(a.hireDate) : null
+              return d ? d >= from && d <= to : false
+            }).length
+            const fires = agents.filter(a => {
+              if (!a.terminationDate) return false
+              const d = new Date(a.terminationDate)
+              return d >= from && d <= to
+            }).length
+            return { key: label, label, hires, fires }
+          }).reverse()
 
     return {
       total: agents.length,
