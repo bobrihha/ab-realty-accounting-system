@@ -256,8 +256,9 @@ async function computeForecast(months: number, year: number | null = null) {
       monthExpectedIncome = i === 0 ? expectedIncomeForForecast : 0
     }
 
-    // Закрытие = Открытие + Ожидаемый приход - План (неоплаченный) - Факт (оплаченный за этот период)
-    const closingBalance = openingBalance + monthExpectedIncome - plannedExpenseSum - actualExpenseForPeriod
+    // Закрытие = Открытие + Ожидаемый приход - План расходов
+    // (Факт расходов НЕ вычитаем, т.к. он уже уменьшил баланс счетов при оплате)
+    const closingBalance = openingBalance + monthExpectedIncome - plannedExpenseSum
 
     const status = closingBalance < 0 ? 'critical' : 'positive'
 
