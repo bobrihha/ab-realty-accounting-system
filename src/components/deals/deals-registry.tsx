@@ -136,6 +136,33 @@ export function DealsRegistry() {
     })
   }, [])
 
+  // Синхронизация selectedDeal с актуальными данными после обновления deals
+  useEffect(() => {
+    if (selectedDeal) {
+      const updated = deals.find(d => d.id === selectedDeal.id)
+      if (updated) {
+        // Обновляем только если данные изменились
+        if (JSON.stringify(updated) !== JSON.stringify(selectedDeal)) {
+          setSelectedDeal(updated)
+        }
+      } else {
+        setSelectedDeal(null) // сделка была удалена
+      }
+    }
+  }, [deals, selectedDeal])
+
+  // Синхронизация editingDeal с актуальными данными после обновления deals
+  useEffect(() => {
+    if (editingDeal) {
+      const updated = deals.find(d => d.id === editingDeal.id)
+      if (!updated) {
+        setEditingDeal(null) // сделка была удалена
+      }
+      // Не обновляем editingDeal автоматически при открытой форме,
+      // чтобы не сбросить несохранённые изменения пользователя
+    }
+  }, [deals, editingDeal])
+
   const filteredDeals = useMemo(() => {
     const s = searchTerm.trim().toLowerCase()
     return deals.filter(deal => {
