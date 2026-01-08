@@ -90,6 +90,20 @@ export async function GET(request: NextRequest) {
             _count: { _all: true }
         })
 
+        // 5. Deals per Agent - количество сделок на агента
+        // Считаем по дате сделки (dealDate) за период
+        const dealsForAgentMetric = await db.deal.findMany({
+            where: {
+                NOT: { status: 'CANCELLED' },
+                dealDate: { gte: from, lte: to }
+            },
+            select: { agentId: true }
+        })
+        const uniqueAgents = new Set(dealsForAgentMetric.map(d => d.agentId))
+        const totalDealsInPeriod = dealsForAgentMetric.length
+        const agentCount = uniqueAgents.size
+        const dealsPerAgent = agentCount > 0 ? totalDealsInPeriod / agentCount : 0
+
         return NextResponse.json({
             revenueByDeposit: {
                 value: revenueByDeposit._sum.commission ?? 0,
@@ -106,6 +120,11 @@ export async function GET(request: NextRequest) {
             pendingRevenue: {
                 value: pendingRevenue._sum.commission ?? 0,
                 count: pendingRevenue._count._all ?? 0
+            },
+            dealsPerAgent: {
+                value: dealsPerAgent,
+                totalDeals: totalDealsInPeriod,
+                agentCount: agentCount
             },
             filters: {
                 year,

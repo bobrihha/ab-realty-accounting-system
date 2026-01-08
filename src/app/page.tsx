@@ -45,6 +45,7 @@ export default function Dashboard() {
     revenueByDeal: { value: number; count: number }
     depositsRevenue: { value: number; count: number }
     pendingRevenue: { value: number; count: number }
+    dealsPerAgent: { value: number; totalDeals: number; agentCount: number }
   }
   const [employees, setEmployees] = useState<Employee[]>([])
   const [extendedKPI, setExtendedKPI] = useState<ExtendedKPI | null>(null)
@@ -284,7 +285,7 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-blue-800 flex items-center gap-2">
@@ -349,6 +350,23 @@ export default function Dashboard() {
                     </div>
                     <p className="text-xs text-purple-600 mt-1">
                       {extendedKPI?.pendingRevenue.count ?? 0} сделок
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-teal-800 flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Сделок на агента
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-teal-900">
+                      {extendedKPI?.dealsPerAgent ? extendedKPI.dealsPerAgent.value.toFixed(1) : '—'}
+                    </div>
+                    <p className="text-xs text-teal-600 mt-1">
+                      {extendedKPI?.dealsPerAgent?.totalDeals ?? 0} сделок · {extendedKPI?.dealsPerAgent?.agentCount ?? 0} агентов
                     </p>
                   </CardContent>
                 </Card>
