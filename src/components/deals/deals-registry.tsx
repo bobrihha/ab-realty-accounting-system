@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -171,6 +172,52 @@ export function DealsRegistry() {
       return matchesSearch && matchesStatus && matchesAgent && matchesLegalServices && matchesContractType && matchesPeriod
     })
   }, [agentFilter, contractTypeFilter, deals, legalServicesFilter, searchTerm, statusFilter, yearFilter, monthFilter])
+
+  // Статистика по агентам
+  const agentStats = useMemo(() => {
+    const stats: Record<string, {
+      id: string
+      name: string
+      totalDeals: number
+      closedDeals: number
+      activeDeals: number
+      totalCommission: number
+      totalAgentCommission: number
+      avgCommission: number
+    }> = {}
+
+    filteredDeals.forEach(deal => {
+      const agentId = deal.agent.id
+      if (!stats[agentId]) {
+        stats[agentId] = {
+          id: agentId,
+          name: deal.agent.name,
+          totalDeals: 0,
+          closedDeals: 0,
+          activeDeals: 0,
+          totalCommission: 0,
+          totalAgentCommission: 0,
+          avgCommission: 0
+        }
+      }
+      stats[agentId].totalDeals += 1
+      stats[agentId].totalCommission += deal.commission
+      stats[agentId].totalAgentCommission += deal.agentCommission ?? 0
+
+      if (deal.status === 'CLOSED') {
+        stats[agentId].closedDeals += 1
+      } else if (deal.status !== 'CANCELLED') {
+        stats[agentId].activeDeals += 1
+      }
+    })
+
+    // Рассчитываем среднюю комиссию
+    Object.values(stats).forEach(s => {
+      s.avgCommission = s.totalDeals > 0 ? Math.round(s.totalCommission / s.totalDeals) : 0
+    })
+
+    return Object.values(stats).sort((a, b) => b.totalDeals - a.totalDeals)
+  }, [filteredDeals])
 
   const resetForm = () => {
     setFormData({
@@ -534,207 +581,273 @@ export function DealsRegistry() {
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Фильтры</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Поиск по клиенту, объекту, агенту..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-[280px] justify-between">
-                  <div className="flex items-center gap-1 flex-wrap max-w-[220px]">
-                    {statusFilter.length === 0 ? (
-                      <span className="text-gray-500">Все статусы</span>
-                    ) : statusFilter.length <= 2 ? (
-                      statusFilter.map(s => (
-                        <Badge key={s} variant="secondary" className="text-xs">
-                          {statusConfig[s as DealStatus].label}
-                        </Badge>
-                      ))
-                    ) : (
-                      <span>Выбрано: {statusFilter.length}</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {statusFilter.length > 0 && (
-                      <X
-                        className="h-4 w-4 text-gray-400 hover:text-gray-600"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setStatusFilter([])
-                        }}
-                      />
-                    )}
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                  </div>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[220px] p-2">
-                <div className="space-y-2">
-                  {Object.entries(statusConfig).map(([key, v]) => (
-                    <div key={key} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`status-${key}`}
-                        checked={statusFilter.includes(key)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setStatusFilter(prev => [...prev, key])
-                          } else {
-                            setStatusFilter(prev => prev.filter(s => s !== key))
-                          }
-                        }}
-                      />
-                      <label
-                        htmlFor={`status-${key}`}
-                        className="text-sm cursor-pointer flex-1"
-                      >
-                        {v.label}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
-            <Select value={agentFilter} onValueChange={setAgentFilter}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Агент" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все агенты</SelectItem>
-                {employees.map(e => (
-                  <SelectItem key={e.id} value={e.id}>
-                    {e.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={legalServicesFilter} onValueChange={setLegalServicesFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Юр. услуги" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Юр. услуги: все</SelectItem>
-                <SelectItem value="yes">С юр. услугами</SelectItem>
-                <SelectItem value="no">Без юр. услуг</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={contractTypeFilter} onValueChange={setContractTypeFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Тип договора" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все типы</SelectItem>
-                {Object.entries(contractTypeLabels).map(([key, label]) => (
-                  <SelectItem key={key} value={key}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={yearFilter} onValueChange={v => { setYearFilter(v); if (v === 'all') setMonthFilter('all') }}>
-              <SelectTrigger className="w-[100px]">
-                <SelectValue placeholder="Год" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все годы</SelectItem>
-                {Array.from({ length: 5 }, (_, i) => String(currentYear - i)).map(y => (
-                  <SelectItem key={y} value={y}>{y}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={monthFilter} onValueChange={setMonthFilter}>
-              <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Месяц" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все месяцы</SelectItem>
-                {MONTHS.map((m, i) => (
-                  <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="registry" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="registry">Реестр</TabsTrigger>
+          <TabsTrigger value="agents">По агентам</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Клиент</TableHead>
-                  <TableHead>Агент</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead>Дата сделки</TableHead>
-                  <TableHead className="text-right">Комиссия агента</TableHead>
-                  <TableHead className="text-right">Комиссия РОПа</TableHead>
-                  <TableHead className="text-right">Налог</TableHead>
-                  <TableHead className="text-right">Комиссия</TableHead>
-                  <TableHead>Действия</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredDeals.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
-                      Сделки не найдены
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredDeals.map(deal => (
-                    <TableRow key={deal.id} className="hover:bg-gray-50">
-                      <TableCell className="font-medium">{deal.client}</TableCell>
-                      <TableCell>{deal.agent.name}</TableCell>
-                      <TableCell>
-                        <Badge className={statusConfig[deal.status].color}>{statusConfig[deal.status].label}</Badge>
-                      </TableCell>
-                      <TableCell>{deal.dealDate ? formatDate(deal.dealDate) : '-'}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {deal.agentCommission != null ? formatCurrency(deal.agentCommission) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {deal.ropCommission != null ? formatCurrency(deal.ropCommission) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(deal.commission * deal.taxRate / 100)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(deal.commission)}</TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          <Button variant="ghost" size="sm" onClick={() => (setSelectedDeal(deal), setIsViewDialogOpen(true))}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {isOwner && (
-                            <>
-                              <Button variant="ghost" size="sm" onClick={() => setEditingDeal(deal)}>
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleDeleteDeal(deal.id).catch(err => alert(err.message))}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
+        <TabsContent value="registry" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Фильтры</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-4">
+                <div className="flex-1 min-w-[200px]">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Поиск по клиенту, объекту, агенту..."
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-[280px] justify-between">
+                      <div className="flex items-center gap-1 flex-wrap max-w-[220px]">
+                        {statusFilter.length === 0 ? (
+                          <span className="text-gray-500">Все статусы</span>
+                        ) : statusFilter.length <= 2 ? (
+                          statusFilter.map(s => (
+                            <Badge key={s} variant="secondary" className="text-xs">
+                              {statusConfig[s as DealStatus].label}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span>Выбрано: {statusFilter.length}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {statusFilter.length > 0 && (
+                          <X
+                            className="h-4 w-4 text-gray-400 hover:text-gray-600"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setStatusFilter([])
+                            }}
+                          />
+                        )}
+                        <ChevronDown className="h-4 w-4 text-gray-400" />
+                      </div>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[220px] p-2">
+                    <div className="space-y-2">
+                      {Object.entries(statusConfig).map(([key, v]) => (
+                        <div key={key} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`status-${key}`}
+                            checked={statusFilter.includes(key)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setStatusFilter(prev => [...prev, key])
+                              } else {
+                                setStatusFilter(prev => prev.filter(s => s !== key))
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor={`status-${key}`}
+                            className="text-sm cursor-pointer flex-1"
+                          >
+                            {v.label}
+                          </label>
                         </div>
-                      </TableCell>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                <Select value={agentFilter} onValueChange={setAgentFilter}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Агент" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все агенты</SelectItem>
+                    {employees.map(e => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={legalServicesFilter} onValueChange={setLegalServicesFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Юр. услуги" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Юр. услуги: все</SelectItem>
+                    <SelectItem value="yes">С юр. услугами</SelectItem>
+                    <SelectItem value="no">Без юр. услуг</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={contractTypeFilter} onValueChange={setContractTypeFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Тип договора" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все типы</SelectItem>
+                    {Object.entries(contractTypeLabels).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={yearFilter} onValueChange={v => { setYearFilter(v); if (v === 'all') setMonthFilter('all') }}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue placeholder="Год" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все годы</SelectItem>
+                    {Array.from({ length: 5 }, (_, i) => String(currentYear - i)).map(y => (
+                      <SelectItem key={y} value={y}>{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={monthFilter} onValueChange={setMonthFilter}>
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue placeholder="Месяц" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все месяцы</SelectItem>
+                    {MONTHS.map((m, i) => (
+                      <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-0">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Клиент</TableHead>
+                      <TableHead>Агент</TableHead>
+                      <TableHead>Статус</TableHead>
+                      <TableHead>Дата сделки</TableHead>
+                      <TableHead className="text-right">Комиссия агента</TableHead>
+                      <TableHead className="text-right">Комиссия РОПа</TableHead>
+                      <TableHead className="text-right">Налог</TableHead>
+                      <TableHead className="text-right">Комиссия</TableHead>
+                      <TableHead>Действия</TableHead>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredDeals.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                          Сделки не найдены
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredDeals.map(deal => (
+                        <TableRow key={deal.id} className="hover:bg-gray-50">
+                          <TableCell className="font-medium">{deal.client}</TableCell>
+                          <TableCell>{deal.agent.name}</TableCell>
+                          <TableCell>
+                            <Badge className={statusConfig[deal.status].color}>{statusConfig[deal.status].label}</Badge>
+                          </TableCell>
+                          <TableCell>{deal.dealDate ? formatDate(deal.dealDate) : '-'}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {deal.agentCommission != null ? formatCurrency(deal.agentCommission) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {deal.ropCommission != null ? formatCurrency(deal.ropCommission) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(deal.commission * deal.taxRate / 100)}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(deal.commission)}</TableCell>
+                          <TableCell>
+                            <div className="flex space-x-2">
+                              <Button variant="ghost" size="sm" onClick={() => (setSelectedDeal(deal), setIsViewDialogOpen(true))}>
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              {isOwner && (
+                                <>
+                                  <Button variant="ghost" size="sm" onClick={() => setEditingDeal(deal)}>
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => handleDeleteDeal(deal.id).catch(err => alert(err.message))}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="agents">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Статистика по агентам</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Агент</TableHead>
+                      <TableHead className="text-right">Всего сделок</TableHead>
+                      <TableHead className="text-right">Закрыто</TableHead>
+                      <TableHead className="text-right">Активных</TableHead>
+                      <TableHead className="text-right">Сумма комиссий</TableHead>
+                      <TableHead className="text-right">Комиссия агента</TableHead>
+                      <TableHead className="text-right">Средняя комиссия</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agentStats.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                          Нет данных
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      <>
+                        {agentStats.map(agent => (
+                          <TableRow key={agent.id} className="hover:bg-gray-50">
+                            <TableCell className="font-medium">{agent.name}</TableCell>
+                            <TableCell className="text-right">{agent.totalDeals}</TableCell>
+                            <TableCell className="text-right text-green-700">{agent.closedDeals}</TableCell>
+                            <TableCell className="text-right text-blue-700">{agent.activeDeals}</TableCell>
+                            <TableCell className="text-right font-medium">{formatCurrency(agent.totalCommission)}</TableCell>
+                            <TableCell className="text-right font-medium">{formatCurrency(agent.totalAgentCommission)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(agent.avgCommission)}</TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow className="bg-gray-50 font-bold">
+                          <TableCell>Итого</TableCell>
+                          <TableCell className="text-right">{agentStats.reduce((s, a) => s + a.totalDeals, 0)}</TableCell>
+                          <TableCell className="text-right text-green-700">{agentStats.reduce((s, a) => s + a.closedDeals, 0)}</TableCell>
+                          <TableCell className="text-right text-blue-700">{agentStats.reduce((s, a) => s + a.activeDeals, 0)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(agentStats.reduce((s, a) => s + a.totalCommission, 0))}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(agentStats.reduce((s, a) => s + a.totalAgentCommission, 0))}</TableCell>
+                          <TableCell className="text-right">-</TableCell>
+                        </TableRow>
+                      </>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-2xl">
