@@ -766,7 +766,7 @@ export function Treasury() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-green-800 flex items-center gap-2">
                   <DollarSign className="h-4 w-4" />
-                  Ожидаю на оплате
+                  Ожидаю в сделках
                 </CardTitle>
                 <CardDescription className="text-green-600">Регистрация, ждём счёт, на оплате</CardDescription>
               </CardHeader>
