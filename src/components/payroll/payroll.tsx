@@ -58,6 +58,13 @@ export function Payroll() {
   const [lastPayment, setLastPayment] = useState<{ employee: string; amount: number; date: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // Фильтры для истории выплат
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyYearFilter, setHistoryYearFilter] = useState<string>('all')
+  const [historyMonthFilter, setHistoryMonthFilter] = useState<string>('all')
+  const [historyQuarterFilter, setHistoryQuarterFilter] = useState<string>('all')
+  const [historyEmployeeFilter, setHistoryEmployeeFilter] = useState<string>('all')
+
   const fmtMoney = (n: number) =>
     new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(n)
 
@@ -180,9 +187,11 @@ export function Payroll() {
       id: string
       amount: number
       paidAt: string
+      employeeId: string
       employeeName: string
       employeeType: string
       dealClient: string
+      dealObject: string
       accountName: string
     }> = []
 
@@ -192,9 +201,11 @@ export function Payroll() {
           id: p.id,
           amount: p.amount,
           paidAt: p.paidAt,
+          employeeId: a.employee.id,
           employeeName: a.employee.name,
           employeeType: a.type,
           dealClient: a.deal.client,
+          dealObject: a.deal.object,
           accountName: p.account.name
         })
       })
@@ -202,6 +213,40 @@ export function Payroll() {
 
     return payments.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())
   }, [accruals])
+
+  // Фильтрованная история выплат
+  const filteredPayments = useMemo(() => {
+    return allPayments.filter(p => {
+      // Поиск по клиенту/объекту
+      if (historySearch) {
+        const searchLower = historySearch.toLowerCase()
+        const matchClient = p.dealClient.toLowerCase().includes(searchLower)
+        const matchObject = p.dealObject.toLowerCase().includes(searchLower)
+        if (!matchClient && !matchObject) return false
+      }
+
+      // Фильтр по сотруднику
+      if (historyEmployeeFilter !== 'all' && p.employeeId !== historyEmployeeFilter) return false
+
+      // Фильтр по дате выплаты
+      const date = new Date(p.paidAt)
+      const year = date.getFullYear()
+      const month = date.getMonth() + 1
+      const quarter = Math.ceil(month / 3)
+
+      if (historyYearFilter !== 'all' && year !== Number(historyYearFilter)) return false
+      if (historyMonthFilter !== 'all' && month !== Number(historyMonthFilter)) return false
+      if (historyQuarterFilter !== 'all' && quarter !== Number(historyQuarterFilter)) return false
+
+      return true
+    })
+  }, [allPayments, historySearch, historyEmployeeFilter, historyYearFilter, historyMonthFilter, historyQuarterFilter])
+
+  // Итого по фильтрованным выплатам
+  const filteredPaymentsTotal = useMemo(() => {
+    return filteredPayments.reduce((s, p) => s + p.amount, 0)
+  }, [filteredPayments])
+
 
   // Средняя ЗП по месяцам
   const monthlyAverageSalary = useMemo(() => {
@@ -641,6 +686,63 @@ ${payment.employee}
             <CardHeader>
               <CardTitle className="text-lg">История выплат</CardTitle>
               <CardDescription>Все выплаты с возможностью скачать РКО</CardDescription>
+              {/* Фильтры */}
+              <div className="flex flex-wrap gap-2 mt-3">
+                <input
+                  type="text"
+                  placeholder="Поиск по клиенту/объекту..."
+                  className="border rounded-md px-3 py-1.5 text-sm w-[200px]"
+                  value={historySearch}
+                  onChange={e => setHistorySearch(e.target.value)}
+                />
+                <Select value={historyYearFilter} onValueChange={v => { setHistoryYearFilter(v); setHistoryMonthFilter('all'); setHistoryQuarterFilter('all') }}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue placeholder="Год" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все годы</SelectItem>
+                    {Array.from({ length: 5 }, (_, i) => String(currentYear - i)).map(y => (
+                      <SelectItem key={y} value={y}>{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={historyMonthFilter} onValueChange={v => { setHistoryMonthFilter(v); setHistoryQuarterFilter('all') }}>
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue placeholder="Месяц" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все месяцы</SelectItem>
+                    {MONTHS.map((m, i) => (
+                      <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={historyQuarterFilter} onValueChange={v => { setHistoryQuarterFilter(v); setHistoryMonthFilter('all') }}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue placeholder="Квартал" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">—</SelectItem>
+                    <SelectItem value="1">Q1</SelectItem>
+                    <SelectItem value="2">Q2</SelectItem>
+                    <SelectItem value="3">Q3</SelectItem>
+                    <SelectItem value="4">Q4</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={historyEmployeeFilter} onValueChange={setHistoryEmployeeFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Сотрудник" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все сотрудники</SelectItem>
+                    {employees.map(e => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name} ({e.role === 'AGENT' ? 'Агент' : 'РОП'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -648,27 +750,30 @@ ${payment.employee}
                   <TableRow>
                     <TableHead>Дата</TableHead>
                     <TableHead>Сотрудник</TableHead>
-                    <TableHead>Сделка</TableHead>
+                    <TableHead>Сделка (клиент)</TableHead>
                     <TableHead>Счёт</TableHead>
                     <TableHead className="text-right">Сумма</TableHead>
                     <TableHead className="w-[100px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {allPayments.length === 0 ? (
+                  {filteredPayments.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                        Нет выплат
+                        Нет выплат по заданным фильтрам
                       </TableCell>
                     </TableRow>
                   ) : (
-                    allPayments.slice(0, 50).map(p => (
+                    filteredPayments.slice(0, 100).map(p => (
                       <TableRow key={p.id}>
                         <TableCell>{fmtDate(p.paidAt)}</TableCell>
                         <TableCell className="font-medium">
                           {p.employeeName} <span className="text-gray-500">({p.employeeType === 'AGENT' ? 'Агент' : 'РОП'})</span>
                         </TableCell>
-                        <TableCell className="max-w-[200px] truncate">{p.dealClient}</TableCell>
+                        <TableCell className="max-w-[200px]">
+                          <div className="font-medium">{p.dealClient}</div>
+                          <div className="text-xs text-gray-500 truncate">{p.dealObject}</div>
+                        </TableCell>
                         <TableCell>{p.accountName}</TableCell>
                         <TableCell className="text-right font-medium text-green-700">{fmtMoney(p.amount)}</TableCell>
                         <TableCell>
@@ -683,6 +788,13 @@ ${payment.employee}
                         </TableCell>
                       </TableRow>
                     ))
+                  )}
+                  {filteredPayments.length > 0 && (
+                    <TableRow className="bg-gray-50 font-bold">
+                      <TableCell colSpan={4}>Итого по фильтру ({filteredPayments.length} выплат)</TableCell>
+                      <TableCell className="text-right text-green-700">{fmtMoney(filteredPaymentsTotal)}</TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
                   )}
                 </TableBody>
               </Table>
