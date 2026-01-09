@@ -382,13 +382,13 @@ export default function Dashboard() {
             {(role === 'AGENT' || role === 'ROP') && (
               <TabsTrigger value="comp">{role === 'AGENT' ? 'Моя ЗП' : 'Комиссии'}</TabsTrigger>
             )}
-            {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+            {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
               <TabsTrigger value="finance">Финансы / P&L</TabsTrigger>
             )}
-            {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+            {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
               <TabsTrigger value="treasury">Казначейство</TabsTrigger>
             )}
-            {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+            {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
               <TabsTrigger value="payroll">Выплаты</TabsTrigger>
             )}
             {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'LAWYER') && (
@@ -411,20 +411,20 @@ export default function Dashboard() {
           )}
 
           {/* Finance Tab */}
-          {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+          {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
             <TabsContent value="finance">
               <FinancePNL />
             </TabsContent>
           )}
 
           {/* Treasury Tab */}
-          {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+          {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
             <TabsContent value="treasury">
               <Treasury />
             </TabsContent>
           )}
 
-          {(role === 'OWNER' || role === 'ACCOUNTANT') && (
+          {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
             <TabsContent value="payroll">
               <Payroll />
             </TabsContent>

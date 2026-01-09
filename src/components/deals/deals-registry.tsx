@@ -71,7 +71,7 @@ const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', '�
 export function DealsRegistry() {
   const { data: session } = useSession()
   const role = ((session as any)?.role as string | undefined) ?? 'AGENT'
-  const isOwner = role === 'OWNER'
+  const canManageDeals = role === 'OWNER' || role === 'ROP'
   const [deals, setDeals] = useState<Deal[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -380,7 +380,7 @@ export function DealsRegistry() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Обновить
           </Button>
-          {isOwner && (
+          {canManageDeals && (
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button>
@@ -796,7 +796,7 @@ export function DealsRegistry() {
                               <Button variant="ghost" size="sm" onClick={() => (setSelectedDeal(deal), setIsViewDialogOpen(true))}>
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              {isOwner && (
+                              {canManageDeals && (
                                 <>
                                   <Button variant="ghost" size="sm" onClick={() => setEditingDeal(deal)}>
                                     <Edit className="h-4 w-4" />
@@ -986,7 +986,7 @@ export function DealsRegistry() {
         </DialogContent>
       </Dialog>
 
-      {isOwner && (
+      {canManageDeals && (
         <Dialog open={!!editingDeal} onOpenChange={() => setEditingDeal(null)}>
           <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>

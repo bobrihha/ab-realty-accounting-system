@@ -6,7 +6,7 @@ import { endOfMonth, formatMonthLabel, monthKey, startOfMonth } from '@/lib/mone
 export async function GET(request: NextRequest) {
   try {
     const session = await requireSession()
-    if (session.role === 'AGENT' || session.role === 'ROP') {
+    if (session.role === 'AGENT') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

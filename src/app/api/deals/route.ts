@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await requireSession()
-    if (session.role !== 'OWNER') {
+    if (session.role !== 'OWNER' && session.role !== 'ROP') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     const data = await request.json()

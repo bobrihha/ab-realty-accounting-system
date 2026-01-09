@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requireSession } from '@/lib/guards'
 
 function canAccessPayroll(role: string) {
-  return role === 'OWNER' || role === 'ACCOUNTANT'
+  return role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP'
 }
 
 export async function GET(request: NextRequest) {
