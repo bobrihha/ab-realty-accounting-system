@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { requireSession } from '@/lib/guards'
 
 function canAccessPayroll(role: string) {
-  return role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP'
+  return role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP' || role === 'AGENT'
 }
 
 export async function GET(request: NextRequest) {
@@ -22,8 +22,13 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status') ?? 'all' // all | unpaid | partially | paid
-    const employeeId = searchParams.get('employeeId') ?? 'all'
+    let employeeId = searchParams.get('employeeId') ?? 'all'
     const type = searchParams.get('type') ?? 'all' // all | AGENT | ROP
+
+    // Для агентов — принудительно фильтруем только их данные
+    if (session.role === 'AGENT') {
+      employeeId = session.userId
+    }
 
     const accruals = await (db as any).payrollAccrual.findMany({
       where: {
@@ -50,7 +55,8 @@ export async function GET(request: NextRequest) {
       })
       .filter(a => (status === 'all' ? true : a.derivedStatus === status))
 
-    const employees = await db.employee.findMany({
+    // Для агентов не отдаём список всех сотрудников
+    const employees = session.role === 'AGENT' ? [] : await db.employee.findMany({
       where: { role: { in: ['AGENT', 'ROP'] } },
       orderBy: { name: 'asc' },
       select: { id: true, name: true, role: true, status: true }
