@@ -244,6 +244,30 @@ export function Treasury() {
   }
 
   // Аналитика расходов по категориям с фильтрами
+  // Группы категорий
+  const EXPENSE_BLOCKS: Record<string, { name: string; color: string; categories: string[] }> = {
+    MARKETING: {
+      name: 'Маркетинг',
+      color: 'from-blue-50 to-blue-100 border-blue-200',
+      categories: ['Авито', 'Циан', 'Яндекс', 'ДомКлик', 'Маркетинг другой']
+    },
+    OFFICE: {
+      name: 'Офисные',
+      color: 'from-green-50 to-green-100 border-green-200',
+      categories: ['Аренда', 'Роялти', 'Офис расходы']
+    },
+    PAYROLL: {
+      name: 'ФОТ',
+      color: 'from-purple-50 to-purple-100 border-purple-200',
+      categories: ['ЗП HR', 'ЗП офис-менеджер', 'ЗП директора', 'ЗП другое']
+    },
+    OTHER: {
+      name: 'Другие',
+      color: 'from-gray-50 to-gray-100 border-gray-200',
+      categories: ['Другое']
+    }
+  }
+
   const expenseAnalytics = useMemo(() => {
     // Фильтруем только оплаченные расходы (PAID)
     const expenses = cashFlow.filter(c => {
@@ -275,7 +299,31 @@ export function Treasury() {
       grandTotal += e.amount
     })
 
-    // Сортируем категории по сумме (убывание)
+    // Группируем категории в блоки
+    const blocks = Object.entries(EXPENSE_BLOCKS).map(([blockId, block]) => {
+      const categoriesInBlock = block.categories
+        .filter(cat => byCategory[cat] && byCategory[cat] > 0)
+        .map(cat => ({
+          category: cat,
+          amount: byCategory[cat] || 0,
+          percent: grandTotal > 0 ? ((byCategory[cat] || 0) / grandTotal) * 100 : 0
+        }))
+        .sort((a, b) => b.amount - a.amount)
+
+      const blockTotal = categoriesInBlock.reduce((s, c) => s + c.amount, 0)
+      const blockPercent = grandTotal > 0 ? (blockTotal / grandTotal) * 100 : 0
+
+      return {
+        id: blockId,
+        name: block.name,
+        color: block.color,
+        categories: categoriesInBlock,
+        total: blockTotal,
+        percent: blockPercent
+      }
+    }).filter(b => b.total > 0)
+
+    // Сортируем категории по сумме (убывание) — для обратной совместимости
     const sortedCategories = Object.entries(byCategory)
       .sort((a, b) => b[1] - a[1])
       .map(([category, amount]) => ({
@@ -284,7 +332,7 @@ export function Treasury() {
         percent: grandTotal > 0 ? (amount / grandTotal) * 100 : 0
       }))
 
-    return { categories: sortedCategories, grandTotal }
+    return { categories: sortedCategories, blocks, grandTotal }
   }, [cashFlow, expenseFilterYear, expenseFilterQuarter, expenseFilterMonth])
 
   const formatCurrency = (amount: number) =>
@@ -1161,25 +1209,35 @@ export function Treasury() {
             </div>
           </CardHeader>
           <CardContent>
-            {expenseAnalytics.categories.length === 0 ? (
+            {expenseAnalytics.blocks.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 Нет данных за выбранный период
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {expenseAnalytics.categories.map(({ category, amount, percent }) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {expenseAnalytics.blocks.map((block) => (
                     <div
-                      key={category}
-                      className="border rounded-lg p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                      key={block.id}
+                      className={`border rounded-lg p-4 bg-gradient-to-br ${block.color}`}
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">{category}</span>
-                        <span className="text-xs text-gray-500">{percent.toFixed(1)}%</span>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-bold text-gray-800">{block.name}</span>
+                        <span className="text-xs font-medium text-gray-600">{block.percent.toFixed(1)}%</span>
                       </div>
-                      <div className="text-xl font-bold text-gray-900">
-                        {formatCurrency(amount)}
+                      <div className="text-2xl font-bold text-gray-900 mb-3">
+                        {formatCurrency(block.total)}
                       </div>
+                      {block.categories.length > 0 && (
+                        <div className="space-y-1 border-t pt-2">
+                          {block.categories.map(({ category, amount, percent }) => (
+                            <div key={category} className="flex justify-between text-xs">
+                              <span className="text-gray-600">{category}</span>
+                              <span className="font-medium text-gray-700">{formatCurrency(amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
