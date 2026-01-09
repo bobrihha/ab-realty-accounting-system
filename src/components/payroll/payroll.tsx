@@ -149,7 +149,7 @@ export function Payroll() {
     return allUnpaidAccruals.reduce((s, a) => s + a.remaining, 0)
   }, [allUnpaidAccruals])
 
-  // Группировка по сотрудникам
+  // Группировка по сотрудникам (для таба "Начислено" — по дате сделки)
   const employeeSummary = useMemo(() => {
     const summary: Record<string, { name: string; type: string; accrued: number; paid: number; remaining: number }> = {}
 
@@ -164,6 +164,42 @@ export function Payroll() {
 
     return Object.entries(summary).map(([id, data]) => ({ id, ...data }))
   }, [filteredAccruals])
+
+  // Группировка выплат ПО ДАТЕ ВЫПЛАТЫ (для таба "Выплачено")
+  // Это синхронизировано с Историей выплат
+  const paidByEmployeeForPeriod = useMemo(() => {
+    const filterYearNum = yearFilter !== 'all' ? Number(yearFilter) : null
+    const filterMonthNum = monthFilter !== 'all' ? Number(monthFilter) : null
+    const filterQuarterNum = quarterFilter !== 'all' ? Number(quarterFilter) : null
+
+    const summary: Record<string, { name: string; type: string; paid: number }> = {}
+    let total = 0
+
+    accruals.forEach(a => {
+      a.payments.forEach(p => {
+        const date = new Date(p.paidAt)
+        const year = date.getFullYear()
+        const month = date.getMonth() + 1
+        const quarter = Math.ceil(month / 3)
+
+        // Фильтр по дате ВЫПЛАТЫ
+        if (filterYearNum !== null && year !== filterYearNum) return
+        if (filterMonthNum !== null && month !== filterMonthNum) return
+        if (filterQuarterNum !== null && quarter !== filterQuarterNum) return
+
+        if (!summary[a.employee.id]) {
+          summary[a.employee.id] = { name: a.employee.name, type: a.type, paid: 0 }
+        }
+        summary[a.employee.id].paid += p.amount
+        total += p.amount
+      })
+    })
+
+    return {
+      employees: Object.entries(summary).map(([id, data]) => ({ id, ...data })),
+      total
+    }
+  }, [accruals, yearFilter, monthFilter, quarterFilter])
 
   // Группировка невыплаченных по сотрудникам (все периоды)
   const unpaidEmployeeSummary = useMemo(() => {
@@ -570,10 +606,10 @@ ${payment.employee}
         </Card>
         <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-green-800">Выплачено</CardTitle>
+            <CardTitle className="text-sm text-green-800">Выплачено в периоде</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-900">{fmtMoney(totals.totalPaid)}</div>
+            <div className="text-2xl font-bold text-green-900">{fmtMoney(paidByEmployeeForPeriod.total)}</div>
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
@@ -644,8 +680,8 @@ ${payment.employee}
         <TabsContent value="paid">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Выплачено</CardTitle>
-              <CardDescription>Фактические выплаты сотрудникам</CardDescription>
+              <CardTitle className="text-lg">Выплачено в периоде</CardTitle>
+              <CardDescription>Фактические выплаты сотрудникам (по дате выплаты)</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -657,14 +693,14 @@ ${payment.employee}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {employeeSummary.filter(e => e.paid > 0).length === 0 ? (
+                  {paidByEmployeeForPeriod.employees.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={3} className="text-center py-8 text-gray-500">
-                        Нет выплат
+                        Нет выплат в этом периоде
                       </TableCell>
                     </TableRow>
                   ) : (
-                    employeeSummary.filter(e => e.paid > 0).map(e => (
+                    paidByEmployeeForPeriod.employees.map(e => (
                       <TableRow key={e.id}>
                         <TableCell className="font-medium">{e.name}</TableCell>
                         <TableCell>{e.type === 'AGENT' ? 'Агент' : 'РОП'}</TableCell>
@@ -674,7 +710,7 @@ ${payment.employee}
                   )}
                   <TableRow className="bg-gray-50 font-bold">
                     <TableCell colSpan={2}>Итого</TableCell>
-                    <TableCell className="text-right text-green-700">{fmtMoney(totals.totalPaid)}</TableCell>
+                    <TableCell className="text-right text-green-700">{fmtMoney(paidByEmployeeForPeriod.total)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
