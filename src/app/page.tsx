@@ -341,7 +341,7 @@ export default function Dashboard() {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-purple-800 flex items-center gap-2">
                       <Clock className="h-4 w-4" />
-                      Выручка ожидаю
+                      В сделках выручка
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
