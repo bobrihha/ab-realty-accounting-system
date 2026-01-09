@@ -45,7 +45,7 @@ export default function Dashboard() {
     revenueByDeal: { value: number; count: number }
     depositsRevenue: { value: number; count: number }
     pendingRevenue: { value: number; count: number }
-    dealsPerAgent: { value: number; totalDeals: number; agentCount: number }
+    dealsPerAgent: { value: number; totalDeals: number; agentCount: number; monthsInPeriod: number }
   }
   const [employees, setEmployees] = useState<Employee[]>([])
   const [extendedKPI, setExtendedKPI] = useState<ExtendedKPI | null>(null)
@@ -358,15 +358,15 @@ export default function Dashboard() {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-teal-800 flex items-center gap-2">
                       <Users className="h-4 w-4" />
-                      Сделок на агента
+                      Сделок на агента/мес
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-teal-900">
-                      {extendedKPI?.dealsPerAgent ? extendedKPI.dealsPerAgent.value.toFixed(1) : '—'}
+                      {extendedKPI?.dealsPerAgent ? extendedKPI.dealsPerAgent.value.toFixed(2) : '—'}
                     </div>
                     <p className="text-xs text-teal-600 mt-1">
-                      {extendedKPI?.dealsPerAgent?.totalDeals ?? 0} сделок · {extendedKPI?.dealsPerAgent?.agentCount ?? 0} агентов
+                      {extendedKPI?.dealsPerAgent?.totalDeals ?? 0} сделок / {extendedKPI?.dealsPerAgent?.agentCount ?? 0} агент{extendedKPI?.dealsPerAgent?.agentCount === 1 ? '' : 'ов'} / {extendedKPI?.dealsPerAgent?.monthsInPeriod ?? 12} мес
                     </p>
                   </CardContent>
                 </Card>

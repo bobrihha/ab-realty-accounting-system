@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
             _count: { _all: true }
         })
 
-        // 5. Deals per Agent - количество сделок на агента
+        // 5. Deals per Agent - среднемесячное количество сделок на агента
         // Считаем по дате сделки (dealDate) за период
         const dealsForAgentMetric = await db.deal.findMany({
             where: {
@@ -102,7 +102,10 @@ export async function GET(request: NextRequest) {
         const uniqueAgents = new Set(dealsForAgentMetric.map(d => d.agentId))
         const totalDealsInPeriod = dealsForAgentMetric.length
         const agentCount = uniqueAgents.size
-        const dealsPerAgent = agentCount > 0 ? totalDealsInPeriod / agentCount : 0
+        // Определяем количество месяцев в периоде
+        const monthsInPeriod = month ? 1 : quarter ? 3 : 12
+        // Среднемесячный показатель
+        const dealsPerAgent = agentCount > 0 ? totalDealsInPeriod / agentCount / monthsInPeriod : 0
 
         return NextResponse.json({
             revenueByDeposit: {
@@ -124,7 +127,8 @@ export async function GET(request: NextRequest) {
             dealsPerAgent: {
                 value: dealsPerAgent,
                 totalDeals: totalDealsInPeriod,
-                agentCount: agentCount
+                agentCount: agentCount,
+                monthsInPeriod: monthsInPeriod
             },
             filters: {
                 year,
