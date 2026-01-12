@@ -260,7 +260,40 @@ export function FinancePNL() {
   const totalProfit = totalIncome - totalExpenses
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
 
-  const metricsTotals = metrics?.totals
+  // Фильтрация данных метрик по месяцу и кварталу
+  const filteredMetricsMonths = (metrics?.months ?? []).filter(m => {
+    const monthNum = parseInt(m.monthKey.split('-')[1], 10)
+
+    // Фильтр по кварталу
+    if (selectedQuarter !== 'all') {
+      const quarter = Math.ceil(monthNum / 3)
+      if (String(quarter) !== selectedQuarter) return false
+    }
+
+    // Фильтр по месяцу
+    if (selectedMonth !== 'all' && String(monthNum) !== selectedMonth) return false
+
+    return true
+  })
+
+  // Пересчитываем итоги на основе отфильтрованных данных
+  const filteredMetricsTotals = filteredMetricsMonths.reduce(
+    (acc, m) => {
+      acc.bookingRevenue += m.bookingRevenue
+      acc.dealRevenue += m.dealRevenue
+      acc.soldPrice += m.soldPrice
+      acc.netProfit += m.netProfit
+      acc.agentCommission += m.agentCommission
+      acc.ropCommission += m.ropCommission
+      return acc
+    },
+    { bookingRevenue: 0, dealRevenue: 0, soldPrice: 0, netProfit: 0, agentCommission: 0, ropCommission: 0, margin: 0 }
+  )
+  filteredMetricsTotals.margin = filteredMetricsTotals.dealRevenue > 0
+    ? (filteredMetricsTotals.netProfit / filteredMetricsTotals.dealRevenue) * 100
+    : 0
+
+  const metricsTotals = (selectedMonth === 'all' && selectedQuarter === 'all') ? metrics?.totals : filteredMetricsTotals
   const agentMonthly = metrics?.byAgentMonthly?.find(a => a.employeeId === agentMonthlyId) ?? null
   const ropMonthly = metrics?.byRopMonthly?.find(r => r.employeeId === ropMonthlyId) ?? null
   const legalMonths = metrics?.legalServices?.months ?? []
@@ -486,8 +519,8 @@ export function FinancePNL() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {metrics?.months?.length ? (
-                        metrics.months.map(m => (
+                      {filteredMetricsMonths.length ? (
+                        filteredMetricsMonths.map(m => (
                           <TableRow key={m.monthKey}>
                             <TableCell className="font-medium">{m.month}</TableCell>
                             <TableCell className="text-right">{formatCurrency(m.bookingRevenue)}</TableCell>
