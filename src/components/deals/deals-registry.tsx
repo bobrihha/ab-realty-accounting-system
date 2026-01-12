@@ -611,7 +611,7 @@ export function DealsRegistry() {
       <Tabs defaultValue="registry" className="space-y-4">
         <TabsList>
           <TabsTrigger value="registry">Реестр</TabsTrigger>
-          <TabsTrigger value="agents">По агентам</TabsTrigger>
+          {role !== 'AGENT' && <TabsTrigger value="agents">По агентам</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="registry" className="space-y-4">
@@ -688,19 +688,21 @@ export function DealsRegistry() {
                     </div>
                   </PopoverContent>
                 </Popover>
-                <Select value={agentFilter} onValueChange={setAgentFilter}>
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue placeholder="Агент" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Все агенты</SelectItem>
-                    {employees.map(e => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {role !== 'AGENT' && (
+                  <Select value={agentFilter} onValueChange={setAgentFilter}>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue placeholder="Агент" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Все агенты</SelectItem>
+                      {employees.map(e => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <Select value={legalServicesFilter} onValueChange={setLegalServicesFilter}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Юр. услуги" />
