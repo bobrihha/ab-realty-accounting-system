@@ -94,15 +94,39 @@ type FinanceMetrics = {
   legalServices: LegalServicesMetrics
 }
 
-const expenseCategories = [
-  'Аренда',
-  'Зарплата',
-  'Маркетинг',
-  'Роялти',
-  'Налоги',
-  'Коммунальные услуги',
-  'Прочие расходы'
-]
+// Группы расходов для отображения в P&L
+const expenseGroups: Record<string, { name: string; color: string; categories: string[] }> = {
+  marketing: {
+    name: 'Маркетинг',
+    color: 'bg-blue-100 text-blue-800',
+    categories: ['Авито', 'Циан', 'ДомКлик', 'Яндекс', 'Маркетинг другой', 'Маркетинг']
+  },
+  office: {
+    name: 'Офисные',
+    color: 'bg-amber-100 text-amber-800',
+    categories: ['Аренда', 'Роялти', 'Офис расходы', 'Коммунальные услуги']
+  },
+  payroll: {
+    name: 'ФОТ',
+    color: 'bg-green-100 text-green-800',
+    categories: ['З/п HR', 'ЗП HR', 'З/п директор', 'ЗП директора', 'ЗП офис-менеджер', 'ЗП другое', 'Зарплата']
+  },
+  other: {
+    name: 'Другие',
+    color: 'bg-gray-100 text-gray-800',
+    categories: [] // все остальные категории попадут сюда
+  }
+}
+
+// Функция для определения группы по категории
+const getCategoryGroup = (category: string): string => {
+  for (const [groupKey, group] of Object.entries(expenseGroups)) {
+    if (group.categories.includes(category)) {
+      return groupKey
+    }
+  }
+  return 'other' // по умолчанию - Другие
+}
 
 export function FinancePNL() {
   const currentYear = new Date().getFullYear()
@@ -935,25 +959,53 @@ export function FinancePNL() {
           <Card>
             <CardHeader>
               <CardTitle>Структура расходов</CardTitle>
-              <CardDescription>Анализ расходов по категориям</CardDescription>
+              <CardDescription>Анализ расходов по группам категорий</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {expenseCategories.map(category => {
-                  const categoryTotal = financialData.reduce((sum, data) => {
-                    const expense = data.expenses.find(e => e.category === category)
-                    return sum + (expense ? expense.amount : 0)
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {Object.entries(expenseGroups).map(([groupKey, group]) => {
+                  // Считаем сумму по всем категориям группы
+                  const groupTotal = filteredFinancialData.reduce((sum, data) => {
+                    return sum + data.expenses.reduce((catSum, expense) => {
+                      const expenseGroup = getCategoryGroup(expense.category)
+                      if (expenseGroup === groupKey) {
+                        return catSum + expense.amount
+                      }
+                      return catSum
+                    }, 0)
                   }, 0)
 
-                  const percentage = totalExpenses > 0 ? (categoryTotal / totalExpenses) * 100 : 0
+                  const percentage = totalExpenses > 0 ? (groupTotal / totalExpenses) * 100 : 0
+
+                  // Собираем детали по каждой категории внутри группы
+                  const categoryDetails: Record<string, number> = {}
+                  filteredFinancialData.forEach(data => {
+                    data.expenses.forEach(expense => {
+                      if (getCategoryGroup(expense.category) === groupKey) {
+                        categoryDetails[expense.category] = (categoryDetails[expense.category] ?? 0) + expense.amount
+                      }
+                    })
+                  })
 
                   return (
-                    <div key={category} className="p-4 border rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <h4 className="font-medium">{category}</h4>
-                        <Badge variant="secondary">{formatPercent(percentage)}</Badge>
+                    <div key={groupKey} className="p-4 border rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <Badge className={group.color}>{group.name}</Badge>
+                        <span className="text-sm text-muted-foreground">{formatPercent(percentage)}</span>
                       </div>
-                      <p className="text-2xl font-bold mt-2">{formatCurrency(categoryTotal)}</p>
+                      <p className="text-2xl font-bold">{formatCurrency(groupTotal)}</p>
+                      {Object.keys(categoryDetails).length > 0 && (
+                        <div className="mt-3 space-y-1 text-sm text-muted-foreground border-t pt-2">
+                          {Object.entries(categoryDetails)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([cat, amount]) => (
+                              <div key={cat} className="flex justify-between">
+                                <span className="truncate">{cat}</span>
+                                <span>{formatCurrency(amount)}</span>
+                              </div>
+                            ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
