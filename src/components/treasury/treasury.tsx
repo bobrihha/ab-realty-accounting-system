@@ -268,10 +268,16 @@ export function Treasury() {
     }
   }
 
+  // Категории расходов, которые исключаются из структуры расходов
+  // (ЗП агентов/РОПов уже учтены в netProfit сделок и отображаются в Выплатах)
+  const EXCLUDED_PAYROLL_CATEGORIES = ['ЗП агентам (выплата)', 'ЗП РОП (выплата)']
+
   const expenseAnalytics = useMemo(() => {
-    // Фильтруем только оплаченные расходы (PAID)
+    // Фильтруем только оплаченные расходы (PAID), исключая ЗП агентов/РОПов
     const expenses = cashFlow.filter(c => {
       if (c.type !== 'EXPENSE' || c.status !== 'PAID') return false
+      // Исключаем ЗП агентов и РОПов - они в разделе Выплат
+      if (EXCLUDED_PAYROLL_CATEGORIES.includes(c.category)) return false
       const date = c.actualDate || c.plannedDate
       if (!date) return false
       const d = new Date(date)
@@ -1171,7 +1177,7 @@ export function Treasury() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <CardTitle className="text-lg">Структура расходов</CardTitle>
-                <CardDescription>Фактические расходы по категориям</CardDescription>
+                <CardDescription>Фактические расходы по категориям (без ЗП агентов/РОПов — они в Выплатах)</CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
                 <select
@@ -1215,29 +1221,19 @@ export function Treasury() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {expenseAnalytics.blocks.map((block) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {expenseAnalytics.categories.map(({ category, amount, percent }) => (
                     <div
-                      key={block.id}
-                      className={`border rounded-lg p-4 bg-gradient-to-br ${block.color}`}
+                      key={category}
+                      className="border rounded-lg p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
                     >
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-sm font-bold text-gray-800">{block.name}</span>
-                        <span className="text-xs font-medium text-gray-600">{block.percent.toFixed(1)}%</span>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-gray-700 truncate" title={category}>{category}</span>
+                        <span className="text-xs text-gray-500 ml-2">{percent.toFixed(1)}%</span>
                       </div>
-                      <div className="text-2xl font-bold text-gray-900 mb-3">
-                        {formatCurrency(block.total)}
+                      <div className="text-lg font-bold text-gray-900">
+                        {formatCurrency(amount)}
                       </div>
-                      {block.categories.length > 0 && (
-                        <div className="space-y-1 border-t pt-2">
-                          {block.categories.map(({ category, amount, percent }) => (
-                            <div key={category} className="flex justify-between text-xs">
-                              <span className="text-gray-600">{category}</span>
-                              <span className="font-medium text-gray-700">{formatCurrency(amount)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
