@@ -221,7 +221,7 @@ export default function Dashboard() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Extended KPI with Filters */}
-        {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
+        {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP' || role === 'AGENT') && (
           <Card className="mb-8">
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-4">
@@ -233,7 +233,7 @@ export default function Dashboard() {
                   <CardDescription>Выручка с фильтрами по периоду и агенту</CardDescription>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {employees.length > 0 && (
+                  {employees.length > 0 && role !== 'AGENT' && (
                     <Select value={extFilter.agentId} onValueChange={v => setExtFilter(f => ({ ...f, agentId: v }))}>
                       <SelectTrigger className="w-[180px]">
                         <Users className="h-4 w-4 mr-2" />
@@ -285,7 +285,7 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 ${role === 'AGENT' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`}>
                 <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-blue-800 flex items-center gap-2">
@@ -354,22 +354,24 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-teal-800 flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      Сделок на агента/мес
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-teal-900">
-                      {extendedKPI?.dealsPerAgent ? extendedKPI.dealsPerAgent.value.toFixed(2) : '—'}
-                    </div>
-                    <p className="text-xs text-teal-600 mt-1">
-                      {extendedKPI?.dealsPerAgent?.totalDeals ?? 0} сделок / {extendedKPI?.dealsPerAgent?.agentCount ?? 0} агент{extendedKPI?.dealsPerAgent?.agentCount === 1 ? '' : 'ов'} / {extendedKPI?.dealsPerAgent?.monthsInPeriod ?? 12} мес
-                    </p>
-                  </CardContent>
-                </Card>
+                {role !== 'AGENT' && (
+                  <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-teal-800 flex items-center gap-2">
+                        <Users className="h-4 w-4" />
+                        Сделок на агента/мес
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-teal-900">
+                        {extendedKPI?.dealsPerAgent ? extendedKPI.dealsPerAgent.value.toFixed(2) : '—'}
+                      </div>
+                      <p className="text-xs text-teal-600 mt-1">
+                        {extendedKPI?.dealsPerAgent?.totalDeals ?? 0} сделок / {extendedKPI?.dealsPerAgent?.agentCount ?? 0} агент{extendedKPI?.dealsPerAgent?.agentCount === 1 ? '' : 'ов'} / {extendedKPI?.dealsPerAgent?.monthsInPeriod ?? 12} мес
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             </CardContent>
           </Card>

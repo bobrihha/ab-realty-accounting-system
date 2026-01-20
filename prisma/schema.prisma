@@ -66,6 +66,7 @@ model Deal {
   dealDate        DateTime?
   plannedCloseDate DateTime?
   contractType    ContractType @default(EXCLUSIVE)
+  developer       String?      // Название застройщика (при contractType = DEVELOPER)
   legalServices   Boolean      @default(false)
   legalServicesAmount Float    @default(0) // Стоимость юр. услуг
   notes           String?

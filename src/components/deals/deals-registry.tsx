@@ -31,6 +31,7 @@ type Deal = {
   dealDate: string | null
   plannedCloseDate: string | null
   contractType: ContractType
+  developer: string | null
   legalServices: boolean
   legalServicesAmount: number
   notes: string | null
@@ -81,6 +82,7 @@ export function DealsRegistry() {
   const [agentFilter, setAgentFilter] = useState<string>('all')
   const [legalServicesFilter, setLegalServicesFilter] = useState<string>('all')
   const [contractTypeFilter, setContractTypeFilter] = useState<string>('all')
+  const [developerFilter, setDeveloperFilter] = useState<string>('all')
 
   const currentYear = new Date().getFullYear()
   const [yearFilter, setYearFilter] = useState<string>('all')
@@ -102,6 +104,7 @@ export function DealsRegistry() {
     dealDate: '',
     plannedCloseDate: '',
     contractType: 'EXCLUSIVE' as ContractType,
+    developer: '',
     legalServices: false,
     legalServicesAmount: '',
     notes: '',
@@ -178,6 +181,8 @@ export function DealsRegistry() {
         (legalServicesFilter === 'yes' && deal.legalServices) ||
         (legalServicesFilter === 'no' && !deal.legalServices)
       const matchesContractType = contractTypeFilter === 'all' || deal.contractType === contractTypeFilter
+      const matchesDeveloper = developerFilter === 'all' ||
+        (deal.contractType === 'DEVELOPER' && deal.developer === developerFilter)
 
       // Фильтр по году/месяцу (по дате сделки)
       let matchesPeriod = true
@@ -196,9 +201,9 @@ export function DealsRegistry() {
         }
       }
 
-      return matchesSearch && matchesStatus && matchesAgent && matchesLegalServices && matchesContractType && matchesPeriod
+      return matchesSearch && matchesStatus && matchesAgent && matchesLegalServices && matchesContractType && matchesDeveloper && matchesPeriod
     })
-  }, [agentFilter, contractTypeFilter, deals, legalServicesFilter, searchTerm, statusFilter, yearFilter, monthFilter])
+  }, [agentFilter, contractTypeFilter, developerFilter, deals, legalServicesFilter, searchTerm, statusFilter, yearFilter, monthFilter])
 
   // Статистика по агентам
   const agentStats = useMemo(() => {
@@ -258,6 +263,7 @@ export function DealsRegistry() {
       dealDate: '',
       plannedCloseDate: '',
       contractType: 'EXCLUSIVE',
+      developer: '',
       legalServices: false,
       legalServicesAmount: '',
       notes: '',
@@ -289,6 +295,7 @@ export function DealsRegistry() {
       dealDate: formData.dealDate || undefined,
       plannedCloseDate: formData.plannedCloseDate || undefined,
       contractType: formData.contractType,
+      developer: formData.contractType === 'DEVELOPER' && formData.developer.trim() ? formData.developer.trim() : null,
       legalServices: formData.legalServices,
       legalServicesAmount: formData.legalServices ? parseFloat(formData.legalServicesAmount) || 0 : 0,
       notes: formData.notes || undefined,
@@ -329,6 +336,7 @@ export function DealsRegistry() {
         dealDate: editingDeal.dealDate,
         plannedCloseDate: editingDeal.plannedCloseDate,
         contractType: editingDeal.contractType,
+        developer: editingDeal.developer,
         legalServices: editingDeal.legalServices,
         legalServicesAmount: editingDeal.legalServices ? editingDeal.legalServicesAmount : 0,
         notes: editingDeal.notes,
@@ -507,6 +515,22 @@ export function DealsRegistry() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {formData.contractType === 'DEVELOPER' && (
+                    <div>
+                      <Label>Застройщик</Label>
+                      <Input
+                        placeholder="Название застройщика"
+                        value={formData.developer}
+                        onChange={e => setFormData(p => ({ ...p, developer: e.target.value }))}
+                        list="developers-list"
+                      />
+                      <datalist id="developers-list">
+                        {Array.from(new Set(deals.filter(d => d.developer).map(d => d.developer!))).map(dev => (
+                          <option key={dev} value={dev} />
+                        ))}
+                      </datalist>
+                    </div>
+                  )}
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="legalServices"
@@ -608,6 +632,152 @@ export function DealsRegistry() {
         </div>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Фильтры</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 min-w-[200px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Поиск по клиенту, объекту, агенту..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-[280px] justify-between">
+                  <div className="flex items-center gap-1 flex-wrap max-w-[220px]">
+                    {statusFilter.length === 0 ? (
+                      <span className="text-gray-500">Все статусы</span>
+                    ) : statusFilter.length <= 2 ? (
+                      statusFilter.map(s => (
+                        <Badge key={s} variant="secondary" className="text-xs">
+                          {statusConfig[s as DealStatus].label}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span>Выбрано: {statusFilter.length}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {statusFilter.length > 0 && (
+                      <X
+                        className="h-4 w-4 text-gray-400 hover:text-gray-600"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setStatusFilter([])
+                        }}
+                      />
+                    )}
+                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                  </div>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[220px] p-2">
+                <div className="space-y-2">
+                  {Object.entries(statusConfig).map(([key, v]) => (
+                    <div key={key} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`status-${key}`}
+                        checked={statusFilter.includes(key)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setStatusFilter(prev => [...prev, key])
+                          } else {
+                            setStatusFilter(prev => prev.filter(s => s !== key))
+                          }
+                        }}
+                      />
+                      <label
+                        htmlFor={`status-${key}`}
+                        className="text-sm cursor-pointer flex-1"
+                      >
+                        {v.label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+            {role !== 'AGENT' && (
+              <Select value={agentFilter} onValueChange={setAgentFilter}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Агент" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все агенты</SelectItem>
+                  {employees.map(e => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Select value={legalServicesFilter} onValueChange={setLegalServicesFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Юр. услуги" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Юр. услуги: все</SelectItem>
+                <SelectItem value="yes">С юр. услугами</SelectItem>
+                <SelectItem value="no">Без юр. услуг</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={contractTypeFilter} onValueChange={setContractTypeFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Тип договора" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все типы</SelectItem>
+                {Object.entries(contractTypeLabels).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={developerFilter} onValueChange={setDeveloperFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Застройщик" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все застройщики</SelectItem>
+                {Array.from(new Set(deals.filter(d => d.developer).map(d => d.developer!))).sort().map(dev => (
+                  <SelectItem key={dev} value={dev}>{dev}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={yearFilter} onValueChange={v => { setYearFilter(v); if (v === 'all') setMonthFilter('all') }}>
+              <SelectTrigger className="w-[100px]">
+                <SelectValue placeholder="Год" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все годы</SelectItem>
+                {Array.from({ length: 5 }, (_, i) => String(currentYear - i)).map(y => (
+                  <SelectItem key={y} value={y}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={monthFilter} onValueChange={setMonthFilter}>
+              <SelectTrigger className="w-[130px]">
+                <SelectValue placeholder="Месяц" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все месяцы</SelectItem>
+                {MONTHS.map((m, i) => (
+                  <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="registry" className="space-y-4">
         <TabsList>
           <TabsTrigger value="registry">Реестр</TabsTrigger>
@@ -615,141 +785,6 @@ export function DealsRegistry() {
         </TabsList>
 
         <TabsContent value="registry" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Фильтры</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4">
-                <div className="flex-1 min-w-[200px]">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                    <Input
-                      placeholder="Поиск по клиенту, объекту, агенту..."
-                      value={searchTerm}
-                      onChange={e => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-[280px] justify-between">
-                      <div className="flex items-center gap-1 flex-wrap max-w-[220px]">
-                        {statusFilter.length === 0 ? (
-                          <span className="text-gray-500">Все статусы</span>
-                        ) : statusFilter.length <= 2 ? (
-                          statusFilter.map(s => (
-                            <Badge key={s} variant="secondary" className="text-xs">
-                              {statusConfig[s as DealStatus].label}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span>Выбрано: {statusFilter.length}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {statusFilter.length > 0 && (
-                          <X
-                            className="h-4 w-4 text-gray-400 hover:text-gray-600"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setStatusFilter([])
-                            }}
-                          />
-                        )}
-                        <ChevronDown className="h-4 w-4 text-gray-400" />
-                      </div>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[220px] p-2">
-                    <div className="space-y-2">
-                      {Object.entries(statusConfig).map(([key, v]) => (
-                        <div key={key} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`status-${key}`}
-                            checked={statusFilter.includes(key)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setStatusFilter(prev => [...prev, key])
-                              } else {
-                                setStatusFilter(prev => prev.filter(s => s !== key))
-                              }
-                            }}
-                          />
-                          <label
-                            htmlFor={`status-${key}`}
-                            className="text-sm cursor-pointer flex-1"
-                          >
-                            {v.label}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                {role !== 'AGENT' && (
-                  <Select value={agentFilter} onValueChange={setAgentFilter}>
-                    <SelectTrigger className="w-[220px]">
-                      <SelectValue placeholder="Агент" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Все агенты</SelectItem>
-                      {employees.map(e => (
-                        <SelectItem key={e.id} value={e.id}>
-                          {e.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                <Select value={legalServicesFilter} onValueChange={setLegalServicesFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Юр. услуги" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Юр. услуги: все</SelectItem>
-                    <SelectItem value="yes">С юр. услугами</SelectItem>
-                    <SelectItem value="no">Без юр. услуг</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={contractTypeFilter} onValueChange={setContractTypeFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Тип договора" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Все типы</SelectItem>
-                    {Object.entries(contractTypeLabels).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={yearFilter} onValueChange={v => { setYearFilter(v); if (v === 'all') setMonthFilter('all') }}>
-                  <SelectTrigger className="w-[100px]">
-                    <SelectValue placeholder="Год" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Все годы</SelectItem>
-                    {Array.from({ length: 5 }, (_, i) => String(currentYear - i)).map(y => (
-                      <SelectItem key={y} value={y}>{y}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={monthFilter} onValueChange={setMonthFilter}>
-                  <SelectTrigger className="w-[130px]">
-                    <SelectValue placeholder="Месяц" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Все месяцы</SelectItem>
-                    {MONTHS.map((m, i) => (
-                      <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardContent className="p-0">
               <div className="rounded-md border">
@@ -906,6 +941,12 @@ export function DealsRegistry() {
                   <Label className="text-sm font-medium text-gray-500">Тип договора</Label>
                   <p className="font-medium">{contractTypeLabels[selectedDeal.contractType]}</p>
                 </div>
+                {selectedDeal.contractType === 'DEVELOPER' && selectedDeal.developer && (
+                  <div>
+                    <Label className="text-sm font-medium text-gray-500">Застройщик</Label>
+                    <p className="font-medium">{selectedDeal.developer}</p>
+                  </div>
+                )}
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Дата брони</Label>
                   <p className="font-medium">{formatDate(selectedDeal.depositDate)}</p>
@@ -1116,6 +1157,22 @@ export function DealsRegistry() {
                     </SelectContent>
                   </Select>
                 </div>
+                {editingDeal.contractType === 'DEVELOPER' && (
+                  <div>
+                    <Label>Застройщик</Label>
+                    <Input
+                      placeholder="Название застройщика"
+                      value={editingDeal.developer || ''}
+                      onChange={e => setEditingDeal(d => (d ? { ...d, developer: e.target.value || null } : d))}
+                      list="edit-developers-list"
+                    />
+                    <datalist id="edit-developers-list">
+                      {Array.from(new Set(deals.filter(d => d.developer).map(d => d.developer!))).map(dev => (
+                        <option key={dev} value={dev} />
+                      ))}
+                    </datalist>
+                  </div>
+                )}
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="edit-legalServices"
