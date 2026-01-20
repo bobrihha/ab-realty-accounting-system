@@ -254,3 +254,18 @@ enum ForecastStatus {
   WARNING
   CRITICAL
 }
+
+// Реестр доступов
+model Credential {
+  id          String   @id @default(cuid())
+  title       String
+  category    String   // Маркетинг, Админ, и т.д.
+  url         String?
+  login       String?
+  password    String?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("credentials")
+}

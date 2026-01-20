@@ -12,6 +12,7 @@ import { Team } from '@/components/team/team'
 import { Compensation } from '@/components/compensation/compensation'
 import { Payroll } from '@/components/payroll/payroll'
 import { LegalServicesRegistry } from '@/components/legal-services/legal-services'
+import { CredentialsRegistry } from '@/components/credentials/credentials'
 import { signOut } from 'next-auth/react'
 import { useSession } from 'next-auth/react'
 import { Badge } from '@/components/ui/badge'
@@ -394,7 +395,10 @@ export default function Dashboard() {
               <TabsTrigger value="payroll">Выплаты</TabsTrigger>
             )}
             {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'LAWYER') && (
-              <TabsTrigger value="legal">Юр.услуги</TabsTrigger>
+              <TabsTrigger value="legal-services">Юр.услуги</TabsTrigger>
+            )}
+            {role === 'OWNER' && (
+              <TabsTrigger value="credentials">Доступы</TabsTrigger>
             )}
             {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
               <TabsTrigger value="team">Команда</TabsTrigger>
@@ -434,8 +438,14 @@ export default function Dashboard() {
 
           {/* Legal Services Tab */}
           {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'LAWYER') && (
-            <TabsContent value="legal">
+            <TabsContent value="legal-services">
               <LegalServicesRegistry />
+            </TabsContent>
+          )}
+
+          {role === 'OWNER' && (
+            <TabsContent value="credentials">
+              <CredentialsRegistry />
             </TabsContent>
           )}
 
