@@ -835,10 +835,10 @@ export function DealsRegistry() {
                       <TableHead>Статус</TableHead>
                       <TableHead>Дата брони</TableHead>
                       <TableHead>Дата сделки</TableHead>
+                      <TableHead className="text-right">Комиссия</TableHead>
+                      <TableHead className="text-right">Налог</TableHead>
                       <TableHead className="text-right">Комиссия агента</TableHead>
                       <TableHead className="text-right">Комиссия РОПа</TableHead>
-                      <TableHead className="text-right">Налог</TableHead>
-                      <TableHead className="text-right">Комиссия</TableHead>
                       <TableHead>Действия</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -859,16 +859,16 @@ export function DealsRegistry() {
                           </TableCell>
                           <TableCell>{formatDate(deal.depositDate)}</TableCell>
                           <TableCell>{deal.dealDate ? formatDate(deal.dealDate) : '-'}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(deal.commission)}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(deal.commission * deal.taxRate / 100)}
+                          </TableCell>
                           <TableCell className="text-right font-medium">
                             {deal.agentCommission != null ? formatCurrency(deal.agentCommission) : '-'}
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             {deal.ropCommission != null ? formatCurrency(deal.ropCommission) : '-'}
                           </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatCurrency(deal.commission * deal.taxRate / 100)}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">{formatCurrency(deal.commission)}</TableCell>
                           <TableCell>
                             <div className="flex space-x-2">
                               <Button variant="ghost" size="sm" onClick={() => (setSelectedDeal(deal), setIsViewDialogOpen(true))}>

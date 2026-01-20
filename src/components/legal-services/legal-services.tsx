@@ -16,6 +16,7 @@ type LegalService = {
     id: string
     client: string
     amount: number
+    depositDate: string | null
     serviceDate: string
     description: string | null
 }
@@ -66,6 +67,7 @@ export function LegalServicesRegistry() {
     const [formData, setFormData] = useState({
         client: '',
         amount: '',
+        depositDate: '',
         serviceDate: '',
         description: ''
     })
@@ -101,7 +103,7 @@ export function LegalServicesRegistry() {
     }, [selectedYear, lawyerRate])
 
     const resetForm = () => {
-        setFormData({ client: '', amount: '', serviceDate: '', description: '' })
+        setFormData({ client: '', amount: '', depositDate: '', serviceDate: '', description: '' })
     }
 
     const formatCurrency = (amount: number) =>
@@ -116,6 +118,7 @@ export function LegalServicesRegistry() {
             body: JSON.stringify({
                 client: formData.client,
                 amount: parseFloat(formData.amount) || 0,
+                depositDate: formData.depositDate || undefined,
                 serviceDate: formData.serviceDate || undefined,
                 description: formData.description || undefined
             })
@@ -134,6 +137,7 @@ export function LegalServicesRegistry() {
             body: JSON.stringify({
                 client: formData.client,
                 amount: parseFloat(formData.amount) || 0,
+                depositDate: formData.depositDate || undefined,
                 serviceDate: formData.serviceDate || undefined,
                 description: formData.description || undefined
             })
@@ -156,6 +160,7 @@ export function LegalServicesRegistry() {
         setFormData({
             client: service.client,
             amount: String(service.amount),
+            depositDate: service.depositDate?.slice(0, 10) ?? '',
             serviceDate: service.serviceDate.slice(0, 10),
             description: service.description ?? ''
         })
@@ -237,7 +242,15 @@ export function LegalServicesRegistry() {
                                         />
                                     </div>
                                     <div>
-                                        <Label>Дата услуги</Label>
+                                        <Label>Дата брони</Label>
+                                        <Input
+                                            type="date"
+                                            value={formData.depositDate}
+                                            onChange={e => setFormData(p => ({ ...p, depositDate: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label>Дата сделки</Label>
                                         <Input
                                             type="date"
                                             value={formData.serviceDate}
@@ -391,7 +404,8 @@ export function LegalServicesRegistry() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Клиент</TableHead>
-                                    <TableHead>Дата</TableHead>
+                                    <TableHead>Дата брони</TableHead>
+                                    <TableHead>Дата сделки</TableHead>
                                     <TableHead className="text-right">Сумма</TableHead>
                                     <TableHead>Описание</TableHead>
                                     <TableHead>Действия</TableHead>
@@ -400,7 +414,7 @@ export function LegalServicesRegistry() {
                             <TableBody>
                                 {legalServices.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                                        <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                                             Нет отдельных юр.услуг
                                         </TableCell>
                                     </TableRow>
@@ -408,6 +422,7 @@ export function LegalServicesRegistry() {
                                     legalServices.map(service => (
                                         <TableRow key={service.id}>
                                             <TableCell className="font-medium">{service.client}</TableCell>
+                                            <TableCell>{service.depositDate ? formatDate(service.depositDate) : '-'}</TableCell>
                                             <TableCell>{formatDate(service.serviceDate)}</TableCell>
                                             <TableCell className="text-right font-medium">{formatCurrency(service.amount)}</TableCell>
                                             <TableCell className="max-w-xs truncate">{service.description || '-'}</TableCell>
@@ -462,7 +477,15 @@ export function LegalServicesRegistry() {
                                 />
                             </div>
                             <div>
-                                <Label>Дата услуги</Label>
+                                <Label>Дата брони</Label>
+                                <Input
+                                    type="date"
+                                    value={formData.depositDate}
+                                    onChange={e => setFormData(p => ({ ...p, depositDate: e.target.value }))}
+                                />
+                            </div>
+                            <div>
+                                <Label>Дата сделки</Label>
                                 <Input
                                     type="date"
                                     value={formData.serviceDate}

@@ -83,6 +83,15 @@ const EXPENSE_CATEGORIES = [
   'Другое'
 ]
 
+// Категории приходов (откуда приход)
+const INCOME_CATEGORIES = [
+  'Комиссия от застройщика',
+  'Комиссия от собственника',
+  'Юр.услуги',
+  'Ипотека',
+  'Другое'
+]
+
 export function Treasury() {
   const currentYear = new Date().getFullYear()
   const [selectedYear, setSelectedYear] = useState<string>('current') // 'current' or specific year like '2025'
@@ -691,7 +700,7 @@ export function Treasury() {
                       onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))}
                     >
                       <option value="">Выберите категорию</option>
-                      {EXPENSE_CATEGORIES.map(cat => (
+                      {(newCashFlow.type === 'INCOME' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
                     </select>
@@ -1317,9 +1326,16 @@ export function Treasury() {
                   onChange={e => setOpsFilterCategory(e.target.value)}
                 >
                   <option value="all">Все категории</option>
-                  {EXPENSE_CATEGORIES.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
+                  <optgroup label="Приходы">
+                    {INCOME_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Расходы">
+                    {EXPENSE_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </optgroup>
                 </select>
                 <select
                   className="border rounded-md px-3 py-1.5 text-sm"
