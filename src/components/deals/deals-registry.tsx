@@ -87,6 +87,9 @@ export function DealsRegistry() {
   const currentYear = new Date().getFullYear()
   const [yearFilter, setYearFilter] = useState<string>('all')
   const [monthFilter, setMonthFilter] = useState<string>('all')
+  // Фильтры по дате брони
+  const [depositYearFilter, setDepositYearFilter] = useState<string>('all')
+  const [depositMonthFilter, setDepositMonthFilter] = useState<string>('all')
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
@@ -201,9 +204,21 @@ export function DealsRegistry() {
         }
       }
 
-      return matchesSearch && matchesStatus && matchesAgent && matchesLegalServices && matchesContractType && matchesDeveloper && matchesPeriod
+      // Фильтр по дате брони
+      let matchesDepositPeriod = true
+      if (depositYearFilter !== 'all' || depositMonthFilter !== 'all') {
+        const date = new Date(deal.depositDate)
+        if (depositYearFilter !== 'all' && date.getFullYear() !== Number(depositYearFilter)) {
+          matchesDepositPeriod = false
+        }
+        if (depositMonthFilter !== 'all' && date.getMonth() + 1 !== Number(depositMonthFilter)) {
+          matchesDepositPeriod = false
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesAgent && matchesLegalServices && matchesContractType && matchesDeveloper && matchesPeriod && matchesDepositPeriod
     })
-  }, [agentFilter, contractTypeFilter, developerFilter, deals, legalServicesFilter, searchTerm, statusFilter, yearFilter, monthFilter])
+  }, [agentFilter, contractTypeFilter, developerFilter, deals, legalServicesFilter, searchTerm, statusFilter, yearFilter, monthFilter, depositYearFilter, depositMonthFilter])
 
   // Статистика по агентам
   const agentStats = useMemo(() => {
@@ -774,6 +789,30 @@ export function DealsRegistry() {
                 ))}
               </SelectContent>
             </Select>
+            <span className="text-xs text-gray-500">|</span>
+            <span className="text-sm text-gray-600">Брони:</span>
+            <Select value={depositYearFilter} onValueChange={v => { setDepositYearFilter(v); if (v === 'all') setDepositMonthFilter('all') }}>
+              <SelectTrigger className="w-[100px]">
+                <SelectValue placeholder="Год" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все годы</SelectItem>
+                {Array.from({ length: 5 }, (_, i) => String(currentYear - i)).map(y => (
+                  <SelectItem key={y} value={y}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={depositMonthFilter} onValueChange={setDepositMonthFilter}>
+              <SelectTrigger className="w-[130px]">
+                <SelectValue placeholder="Месяц" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все месяцы</SelectItem>
+                {MONTHS.map((m, i) => (
+                  <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -794,6 +833,7 @@ export function DealsRegistry() {
                       <TableHead>Клиент</TableHead>
                       <TableHead>Агент</TableHead>
                       <TableHead>Статус</TableHead>
+                      <TableHead>Дата брони</TableHead>
                       <TableHead>Дата сделки</TableHead>
                       <TableHead className="text-right">Комиссия агента</TableHead>
                       <TableHead className="text-right">Комиссия РОПа</TableHead>
@@ -805,7 +845,7 @@ export function DealsRegistry() {
                   <TableBody>
                     {filteredDeals.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                           Сделки не найдены
                         </TableCell>
                       </TableRow>
@@ -817,6 +857,7 @@ export function DealsRegistry() {
                           <TableCell>
                             <Badge className={statusConfig[deal.status].color}>{statusConfig[deal.status].label}</Badge>
                           </TableCell>
+                          <TableCell>{formatDate(deal.depositDate)}</TableCell>
                           <TableCell>{deal.dealDate ? formatDate(deal.dealDate) : '-'}</TableCell>
                           <TableCell className="text-right font-medium">
                             {deal.agentCommission != null ? formatCurrency(deal.agentCommission) : '-'}
