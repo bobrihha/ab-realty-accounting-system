@@ -162,7 +162,7 @@ export function LegalServicesRegistry() {
             client: service.client,
             amount: String(service.amount),
             depositDate: service.depositDate?.slice(0, 10) ?? '',
-            serviceDate: service.serviceDate.slice(0, 10),
+            serviceDate: service.serviceDate ? service.serviceDate.slice(0, 10) : '',
             description: service.description ?? ''
         })
     }
