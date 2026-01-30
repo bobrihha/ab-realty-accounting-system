@@ -34,6 +34,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Имя агента (директора), сделки которого не учитываются в расчёте % агента и РОПа
+    const EXCLUDED_AGENT_NAME = 'Берников А.В.'
+
     const dealsClosed = await db.deal.findMany({
       where: { dealDate: { gte: from, lte: to }, NOT: { status: 'CANCELLED' } },
       select: {
@@ -48,7 +51,8 @@ export async function GET(request: NextRequest) {
         ropCommission: true,
         referralExpense: true,
         agentRateApplied: true,
-        ropRateApplied: true
+        ropRateApplied: true,
+        agent: { select: { name: true } }
       }
     })
 
@@ -194,12 +198,17 @@ export async function GET(request: NextRequest) {
       m.dealRevenue += d.commission
       m.soldPrice += d.price
       m.netProfit += d.netProfit ?? 0
-      m.agentCommission += d.agentCommission ?? 0
-      m.ropCommission += d.ropCommission ?? 0
-      // Для расчёта среднего % ставки
-      m._dealCount += 1
-      m._agentRateSum += d.agentRateApplied ?? 0
-      m._ropRateSum += d.ropRateApplied ?? 0
+
+      // Исключаем сделки директора (Берников А.В.) из расчёта % агента и РОПа
+      const isExcludedAgent = d.agent?.name === EXCLUDED_AGENT_NAME
+      if (!isExcludedAgent) {
+        m.agentCommission += d.agentCommission ?? 0
+        m.ropCommission += d.ropCommission ?? 0
+        // Для расчёта среднего % ставки
+        m._dealCount += 1
+        m._agentRateSum += d.agentRateApplied ?? 0
+        m._ropRateSum += d.ropRateApplied ?? 0
+      }
     }
 
     const byAgent = new Map<

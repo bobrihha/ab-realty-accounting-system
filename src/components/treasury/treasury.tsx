@@ -796,7 +796,7 @@ export function Treasury() {
 
         {/* Treasury KPI Cards */}
         {treasuryKPI && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             {/* 1. Ожидаю на оплате */}
             <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
               <CardHeader className="pb-2">
@@ -869,6 +869,33 @@ export function Treasury() {
                 </div>
                 <p className="text-xs text-orange-600 mt-1">
                   {treasuryKPI.expectedDeposits.count} сделок
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* 5. Ожидаю итого */}
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-green-800 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Ожидаю итого
+                </CardTitle>
+                <CardDescription className="text-green-600">Сумма всех ожиданий</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-900">
+                  {formatCurrency(
+                    treasuryKPI.expectedWaitingPayment.value +
+                    treasuryKPI.expectedRegistration.value +
+                    treasuryKPI.expectedWaitingInvoice.value +
+                    treasuryKPI.expectedDeposits.value
+                  )}
+                </div>
+                <p className="text-xs text-green-600 mt-1">
+                  {treasuryKPI.expectedWaitingPayment.count +
+                    treasuryKPI.expectedRegistration.count +
+                    treasuryKPI.expectedWaitingInvoice.count +
+                    treasuryKPI.expectedDeposits.count} сделок
                 </p>
               </CardContent>
             </Card>

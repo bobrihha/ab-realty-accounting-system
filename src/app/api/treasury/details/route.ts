@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
                         status: 'CLOSED',
                         dealDate: { gte: from, lte: to }
                     },
-                    select: { id: true, netProfit: true, clientName: true, dealDate: true, dealNumber: true },
+                    select: { id: true, netProfit: true, client: true, dealDate: true },
                     orderBy: { dealDate: 'asc' }
                 })
 
@@ -166,7 +166,7 @@ export async function GET(request: NextRequest) {
                     ...closedDeals.map(d => ({
                         id: d.id,
                         category: 'Сделка',
-                        description: `${d.clientName} (№${d.dealNumber})`,
+                        description: d.client,
                         amount: d.netProfit,
                         date: d.dealDate,
                         source: 'deal',
@@ -191,7 +191,7 @@ export async function GET(request: NextRequest) {
                 // Logic matching computeForecast in /api/treasury/route.ts
                 const activeDeals = await db.deal.findMany({
                     where: { status: { notIn: ['CLOSED', 'CANCELLED'] } },
-                    select: { id: true, netProfit: true, clientName: true, plannedMoneyDate: true, plannedCloseDate: true, dealDate: true, dealNumber: true }
+                    select: { id: true, netProfit: true, client: true, plannedMoneyDate: true, plannedCloseDate: true, dealDate: true }
                 })
 
                 const compareMonth = date.getMonth()
@@ -225,7 +225,7 @@ export async function GET(request: NextRequest) {
                         forecastDeals.push({
                             id: d.id,
                             category: 'Сделка (Прогноз)',
-                            description: `${d.clientName} (№${d.dealNumber}) ${isPastDueAndThisIsCurrentMonth ? '[Просрочка]' : ''}`,
+                            description: `${d.client} ${isPastDueAndThisIsCurrentMonth ? '[Просрочка]' : ''}`,
                             amount: d.netProfit,
                             date: targetDate, // Use the target date for display
                             source: 'deal',

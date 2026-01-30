@@ -57,3 +57,174 @@
  GET / 200 in 569ms (compile: 181ms, proxy.ts: 31ms, render: 357ms)
  GET / 200 in 132ms (compile: 7ms, proxy.ts: 75ms, render: 50ms)
  GET / 200 in 44ms (compile: 3ms, proxy.ts: 20ms, render: 20ms)
+ GET / 200 in 13.7s (compile: 2.4s, proxy.ts: 3.1s, render: 8.2s)
+ ○ Compiling /api/treasury ...
+ GET /api/treasury?months=12 200 in 26.8s (compile: 14.2s, proxy.ts: 637ms, render: 12.0s)
+ ○ Compiling /api/treasury/kpi ...
+ GET /api/treasury/kpi 200 in 34.8s (compile: 32.8s, proxy.ts: 482ms, render: 1433ms)
+ GET /api/treasury?months=12 200 in 13.5s (compile: 5.6s, proxy.ts: 1507ms, render: 6.4s)
+ GET /api/treasury?months=12 200 in 36.0s (compile: 23.5s, proxy.ts: 3.4s, render: 9.1s)
+ GET /api/treasury/kpi 200 in 2.9s (compile: 413ms, proxy.ts: 2.4s, render: 108ms)
+ GET /api/treasury/kpi 200 in 4.1s (compile: 399ms, proxy.ts: 2.5s, render: 1262ms)
+ ○ Compiling /api/auth/[...nextauth] ...
+ GET /api/auth/session 200 in 10.2s (compile: 9.9s, render: 305ms)
+ ○ Compiling /api/treasury/details ...
+Error fetching treasury details: Error [PrismaClientValidationError]: 
+Invalid `prisma.deal.findMany()` invocation:
+
+{
+  where: {
+    status: {
+      notIn: [
+        "CLOSED",
+        "CANCELLED"
+      ]
+    }
+  },
+  select: {
+    id: true,
+    netProfit: true,
+    clientName: true,
+    ~~~~~~~~~~
+    plannedMoneyDate: true,
+    plannedCloseDate: true,
+    dealDate: true,
+    dealNumber: true,
+?   client?: true,
+?   object?: true,
+?   price?: true,
+?   commission?: true,
+?   agentId?: true,
+?   ropId?: true,
+?   status?: true,
+?   depositDate?: true,
+?   contractType?: true,
+?   developer?: true,
+?   legalServices?: true,
+?   legalServicesAmount?: true,
+?   notes?: true,
+?   taxRate?: true,
+?   brokerExpense?: true,
+?   lawyerExpense?: true,
+?   referralExpense?: true,
+?   otherExpense?: true,
+?   externalExpenses?: true,
+?   ropCommission?: true,
+?   agentCommission?: true,
+?   ropRateApplied?: true,
+?   agentRateApplied?: true,
+?   commissionsManual?: true,
+?   createdAt?: true,
+?   updatedAt?: true,
+?   agent?: true,
+?   rop?: true,
+?   payrollAccruals?: true,
+?   _count?: true
+  }
+}
+
+Unknown field `clientName` for select statement on model `Deal`. Available options are marked with ?.
+    at async GET (src/app/api/treasury/details/route.ts:192:37)
+  190 |                 // 2. Active Deals (Forecast)
+  191 |                 // Logic matching computeForecast in /api/treasury/route.ts
+> 192 |                 const activeDeals = await db.deal.findMany({
+      |                                     ^
+  193 |                     where: { status: { notIn: ['CLOSED', 'CANCELLED'] } },
+  194 |                     select: { id: true, netProfit: true, clientName: true, plannedMoneyDate: true, plannedCloseDate: true, dealDate: true, dealNumber: true }
+  195 |                 }) {
+  clientVersion: '6.19.0'
+}
+ GET /api/treasury/details?monthKey=2026-01&type=INCOME&subtype=planned 500 in 27.1s (compile: 18.6s, proxy.ts: 1657ms, render: 6.9s)
+Error fetching treasury details: Error [PrismaClientValidationError]: 
+Invalid `prisma.deal.findMany()` invocation:
+
+{
+  where: {
+    status: "CLOSED",
+    dealDate: {
+      gte: new Date("2025-12-31T23:00:00.000Z"),
+      lte: new Date("2026-01-31T22:59:59.999Z")
+    }
+  },
+  select: {
+    id: true,
+    netProfit: true,
+    clientName: true,
+    ~~~~~~~~~~
+    dealDate: true,
+    dealNumber: true,
+?   client?: true,
+?   object?: true,
+?   price?: true,
+?   commission?: true,
+?   agentId?: true,
+?   ropId?: true,
+?   status?: true,
+?   depositDate?: true,
+?   plannedCloseDate?: true,
+?   plannedMoneyDate?: true,
+?   contractType?: true,
+?   developer?: true,
+?   legalServices?: true,
+?   legalServicesAmount?: true,
+?   notes?: true,
+?   taxRate?: true,
+?   brokerExpense?: true,
+?   lawyerExpense?: true,
+?   referralExpense?: true,
+?   otherExpense?: true,
+?   externalExpenses?: true,
+?   ropCommission?: true,
+?   agentCommission?: true,
+?   ropRateApplied?: true,
+?   agentRateApplied?: true,
+?   commissionsManual?: true,
+?   createdAt?: true,
+?   updatedAt?: true,
+?   agent?: true,
+?   rop?: true,
+?   payrollAccruals?: true,
+?   _count?: true
+  },
+  orderBy: {
+    dealDate: "asc"
+  }
+}
+
+Unknown field `clientName` for select statement on model `Deal`. Available options are marked with ?.
+    at async GET (src/app/api/treasury/details/route.ts:146:37)
+  144 |                 // 2. Closed Deals (Fact)
+  145 |                 // Logic: dealDate is within this month AND status is CLOSED
+> 146 |                 const closedDeals = await db.deal.findMany({
+      |                                     ^
+  147 |                     where: {
+  148 |                         status: 'CLOSED',
+  149 |                         dealDate: { gte: from, lte: to } {
+  clientVersion: '6.19.0'
+}
+ GET /api/treasury/details?monthKey=2026-01&type=INCOME&subtype=actual 500 in 22.6s (compile: 11.8s, proxy.ts: 326ms, render: 10.4s)
+ GET /api/auth/session 200 in 486ms (compile: 250ms, render: 236ms)
+ GET / 200 in 980ms (compile: 312ms, proxy.ts: 48ms, render: 620ms)
+ GET / 200 in 81ms (compile: 17ms, proxy.ts: 22ms, render: 42ms)
+ GET /api/auth/session 200 in 60ms (compile: 28ms, render: 32ms)
+ GET /api/employees 200 in 3.8s (compile: 2.8s, proxy.ts: 21ms, render: 961ms)
+ GET /api/dashboard/extended?year=2026&month=none&quarter=none 200 in 3.8s (compile: 2.8s, proxy.ts: 22ms, render: 968ms)
+ GET /api/dashboard 200 in 3.8s (compile: 2.8s, proxy.ts: 20ms, render: 968ms)
+ GET /api/employees 200 in 110ms (compile: 45ms, proxy.ts: 21ms, render: 44ms)
+ GET /api/deals 200 in 1449ms (compile: 1361ms, proxy.ts: 20ms, render: 68ms)
+ GET /api/treasury?months=12 200 in 2.4s (compile: 2.0s, proxy.ts: 43ms, render: 389ms)
+ GET /api/treasury/kpi 200 in 1676ms (compile: 1614ms, proxy.ts: 18ms, render: 45ms)
+ GET /api/auth/session 200 in 546ms (compile: 295ms, render: 251ms)
+ GET / 200 in 837ms (compile: 637ms, proxy.ts: 116ms, render: 84ms)
+ GET /api/auth/session 200 in 640ms (compile: 105ms, render: 536ms)
+ GET / 200 in 94ms (compile: 7ms, proxy.ts: 40ms, render: 47ms)
+ GET / 200 in 459ms (compile: 47ms, proxy.ts: 224ms, render: 188ms)
+ GET / 200 in 669ms (compile: 52ms, proxy.ts: 205ms, render: 413ms)
+ GET / 200 in 500ms (compile: 85ms, proxy.ts: 178ms, render: 238ms)
+ GET /api/auth/session 200 in 996ms (compile: 482ms, render: 515ms)
+ GET / 200 in 281ms (compile: 189ms, proxy.ts: 28ms, render: 65ms)
+ GET /api/treasury?months=12 200 in 4.8s (compile: 3.3s, proxy.ts: 374ms, render: 1123ms)
+ ○ Compiling /api/treasury/kpi ...
+ GET /api/treasury/kpi 200 in 3.7s (compile: 3.4s, proxy.ts: 6ms, render: 298ms)
+ GET / 200 in 403ms (compile: 288ms, proxy.ts: 58ms, render: 57ms)
+ GET / 200 in 2.1s (compile: 89ms, proxy.ts: 1972ms, render: 87ms)

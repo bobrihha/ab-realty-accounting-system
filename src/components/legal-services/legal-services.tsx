@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Edit, Trash2, RefreshCw, Scale, FileText, Calculator, Users } from 'lucide-react'
+import { Plus, Edit, Trash2, RefreshCw, Scale, FileText, Calculator, Users, X } from 'lucide-react'
 
 type LegalService = {
     id: string
@@ -48,6 +48,16 @@ type LegalServicesStats = {
     }
 }
 
+type LegalDeal = {
+    id: string
+    client: string
+    dealDate: string | null
+    legalServicesAmount: number
+    commission: number
+    price: number
+    agentName: string
+}
+
 export function LegalServicesRegistry() {
     const { data: session } = useSession()
     const role = ((session as any)?.role as string | undefined) ?? 'AGENT'
@@ -64,6 +74,11 @@ export function LegalServicesRegistry() {
 
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
     const [editingService, setEditingService] = useState<LegalService | null>(null)
+
+    // Модалка со списком сделок
+    const [dealsModalMonth, setDealsModalMonth] = useState<string | null>(null)
+    const [dealsModalData, setDealsModalData] = useState<LegalDeal[]>([])
+    const [dealsModalLoading, setDealsModalLoading] = useState(false)
 
     const [formData, setFormData] = useState({
         client: '',
@@ -111,6 +126,22 @@ export function LegalServicesRegistry() {
         new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 }).format(amount)
 
     const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('ru-RU')
+
+    const openDealsModal = async (monthKey: string, monthLabel: string) => {
+        setDealsModalMonth(monthLabel)
+        setDealsModalLoading(true)
+        setDealsModalData([])
+        try {
+            const res = await fetch(`/api/legal-services/deals?monthKey=${monthKey}`, { cache: 'no-store' })
+            if (res.ok) {
+                const data = await res.json()
+                setDealsModalData(data.deals)
+            }
+        } catch (err) {
+            console.error('Error loading legal deals:', err)
+        }
+        setDealsModalLoading(false)
+    }
 
     const handleCreate = async () => {
         const res = await fetch('/api/legal-services', {
@@ -378,7 +409,12 @@ export function LegalServicesRegistry() {
                                     {stats.months.map(m => (
                                         <TableRow key={m.monthKey}>
                                             <TableCell className="font-medium">{m.month}</TableCell>
-                                            <TableCell className="text-right">{m.dealsCount || '-'}</TableCell>
+                                            <TableCell
+                                                className={`text-right ${m.dealsCount > 0 ? 'text-blue-600 cursor-pointer hover:underline' : ''}`}
+                                                onClick={() => m.dealsCount > 0 && openDealsModal(m.monthKey, m.month)}
+                                            >
+                                                {m.dealsCount || '-'}
+                                            </TableCell>
                                             <TableCell className="text-right">{m.dealsAmount ? formatCurrency(m.dealsAmount) : '-'}</TableCell>
                                             <TableCell className="text-right">{m.standaloneCount || '-'}</TableCell>
                                             <TableCell className="text-right">{m.standaloneAmount ? formatCurrency(m.standaloneAmount) : '-'}</TableCell>
@@ -527,6 +563,63 @@ export function LegalServicesRegistry() {
                     </DialogContent>
                 </Dialog>
             )}
+
+            {/* Модалка со списком сделок с юр.услугами */}
+            <Dialog open={!!dealsModalMonth} onOpenChange={() => setDealsModalMonth(null)}>
+                <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <FileText className="h-5 w-5" />
+                            Сделки с юр.услугами — {dealsModalMonth}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Список сделок с включёнными юридическими услугами
+                        </DialogDescription>
+                    </DialogHeader>
+                    {dealsModalLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        </div>
+                    ) : dealsModalData.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                            Нет сделок с юр.услугами за этот месяц
+                        </div>
+                    ) : (
+                        <div className="max-h-[60vh] overflow-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Клиент</TableHead>
+                                        <TableHead>Агент</TableHead>
+                                        <TableHead>Дата сделки</TableHead>
+                                        <TableHead className="text-right">Юр.услуги</TableHead>
+                                        <TableHead className="text-right">Комиссия</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {dealsModalData.map(deal => (
+                                        <TableRow key={deal.id}>
+                                            <TableCell className="font-medium">{deal.client}</TableCell>
+                                            <TableCell>{deal.agentName}</TableCell>
+                                            <TableCell>{deal.dealDate ? formatDate(deal.dealDate) : '-'}</TableCell>
+                                            <TableCell className="text-right font-medium text-blue-700">
+                                                {formatCurrency(deal.legalServicesAmount)}
+                                            </TableCell>
+                                            <TableCell className="text-right">{formatCurrency(deal.commission)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                            <div className="mt-4 p-3 bg-blue-50 rounded-lg text-right">
+                                <span className="text-sm text-blue-600">Итого:</span>
+                                <span className="ml-2 font-bold text-blue-900">
+                                    {formatCurrency(dealsModalData.reduce((acc, d) => acc + d.legalServicesAmount, 0))}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

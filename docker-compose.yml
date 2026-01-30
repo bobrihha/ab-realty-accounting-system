@@ -68,7 +68,8 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
+    external: true
+    name: realty-agency_postgres_data
 
 networks:
   realty-network:
