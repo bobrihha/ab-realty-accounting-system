@@ -57,15 +57,15 @@ type TreasuryKPI = {
   expectedWaitingInvoice: { value: number; count: number }
 }
 
-type ExpenseDetail = {
+type TreasuryDetailItem = {
   id: string
   amount: number
   category: string
   description: string | null
-  plannedDate: string
-  isRecurring: boolean
-  source: 'recurring' | 'planned' | 'actual'
-  status?: 'PLANNED' | 'PAID'
+  date: string
+  isRecurring?: boolean
+  source: 'recurring' | 'cashflow' | 'deal'
+  status?: 'PLANNED' | 'PAID' | 'CLOSED'
   accountId?: string | null
 }
 
@@ -154,16 +154,17 @@ export function Treasury() {
   const [isEditCashFlowDialogOpen, setIsEditCashFlowDialogOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
 
-  // Диалог с детализацией расходов
-  const [isExpenseDetailsOpen, setIsExpenseDetailsOpen] = useState(false)
-  const [expenseDetailsMonth, setExpenseDetailsMonth] = useState<{ monthKey: string; month: string } | null>(null)
-  const [expenseDetails, setExpenseDetails] = useState<ExpenseDetail[]>([])
-  const [expenseDetailsLoading, setExpenseDetailsLoading] = useState(false)
-  const [expenseDetailsType, setExpenseDetailsType] = useState<'planned' | 'actual'>('planned')
+  // Диалог с детализацией (приход/расход)
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
+  const [detailsMonth, setDetailsMonth] = useState<{ monthKey: string; month: string } | null>(null)
+  const [detailsItems, setDetailsItems] = useState<TreasuryDetailItem[]>([])
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [detailsType, setDetailsType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE')
+  const [detailsSubtype, setDetailsSubtype] = useState<'planned' | 'actual'>('planned')
 
   // Диалог оплаты расхода из плана
   const [isPayExpenseDialogOpen, setIsPayExpenseDialogOpen] = useState(false)
-  const [payingExpense, setPayingExpense] = useState<ExpenseDetail | null>(null)
+  const [payingExpense, setPayingExpense] = useState<TreasuryDetailItem | null>(null)
   const [payExpenseData, setPayExpenseData] = useState({ accountId: '', actualDate: '' })
 
   // Фильтры для аналитики расходов
@@ -239,22 +240,23 @@ export function Treasury() {
   const totalBalance = useMemo(() => accounts.reduce((sum, a) => sum + (a.balance || 0), 0), [accounts])
   const hasCashGap = useMemo(() => forecast.some(f => f.status === 'critical'), [forecast])
 
-  const openExpenseDetails = async (monthKey: string, month: string, type: 'planned' | 'actual' = 'planned') => {
-    setExpenseDetailsMonth({ monthKey, month })
-    setExpenseDetails([])
-    setExpenseDetailsType(type)
-    setIsExpenseDetailsOpen(true)
-    setExpenseDetailsLoading(true)
+  const openDetails = async (monthKey: string, month: string, type: 'INCOME' | 'EXPENSE', subtype: 'planned' | 'actual') => {
+    setDetailsMonth({ monthKey, month })
+    setDetailsItems([])
+    setDetailsType(type)
+    setDetailsSubtype(subtype)
+    setIsDetailsDialogOpen(true)
+    setDetailsLoading(true)
     try {
-      const res = await fetch(`/api/treasury/expenses?monthKey=${encodeURIComponent(monthKey)}&type=${type}`, { cache: 'no-store' })
+      const res = await fetch(`/api/treasury/details?monthKey=${encodeURIComponent(monthKey)}&type=${type}&subtype=${subtype}`, { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
-        setExpenseDetails(data.expenses ?? [])
+        setDetailsItems(data.items ?? [])
       }
     } catch (e) {
-      console.error('Failed to load expense details', e)
+      console.error('Failed to load details', e)
     } finally {
-      setExpenseDetailsLoading(false)
+      setDetailsLoading(false)
     }
   }
 
@@ -514,7 +516,7 @@ export function Treasury() {
   }
 
   // Открыть диалог оплаты расхода
-  const openPayExpenseDialog = (expense: ExpenseDetail) => {
+  const openPayExpenseDialog = (expense: TreasuryDetailItem) => {
     setPayingExpense(expense)
     setPayExpenseData({
       accountId: expense.accountId ?? '',
@@ -527,7 +529,7 @@ export function Treasury() {
   const [payingInProgress, setPayingInProgress] = useState(false)
 
   const handlePayExpense = async () => {
-    if (!payingExpense || !expenseDetailsMonth) return
+    if (!payingExpense || !detailsMonth) return
     if (!payExpenseData.accountId) {
       alert('Выберите счет для оплаты')
       return
@@ -540,7 +542,7 @@ export function Treasury() {
         // Для повторяющихся расходов: создаём новую запись PAID
         // plannedDate = первое число месяца, за который оплачиваем (для отслеживания периода)
         // actualDate = фактическая дата оплаты
-        const [year, month] = expenseDetailsMonth.monthKey.split('-').map(Number)
+        const [year, month] = detailsMonth.monthKey.split('-').map(Number)
         const targetMonthDate = new Date(year, month - 1, 15).toISOString().slice(0, 10) // середина целевого месяца
 
         const res = await fetch('/api/treasury?type=cashflow', {
@@ -553,7 +555,7 @@ export function Treasury() {
             category: payingExpense.category,
             plannedDate: targetMonthDate, // месяц, ЗА который оплачиваем
             actualDate: payExpenseData.actualDate, // когда фактически оплатили
-            description: payingExpense.description ?? `${payingExpense.category} (${expenseDetailsMonth.month})`,
+            description: payingExpense.description ?? `${payingExpense.category} (${detailsMonth.month})`,
             accountId: payExpenseData.accountId,
             isRecurring: false
           })
@@ -569,7 +571,7 @@ export function Treasury() {
             status: 'PAID',
             amount: payingExpense.amount,
             category: payingExpense.category,
-            plannedDate: payingExpense.plannedDate,
+            plannedDate: payingExpense.date,
             actualDate: payExpenseData.actualDate,
             description: payingExpense.description,
             accountId: payExpenseData.accountId,
@@ -581,7 +583,7 @@ export function Treasury() {
 
       // Закрываем ОБА диалога и перезагружаем данные
       setIsPayExpenseDialogOpen(false)
-      setIsExpenseDetailsOpen(false)
+      setIsDetailsDialogOpen(false)
       setPayingExpense(null)
       await load()
       alert(`✓ Расход "${payingExpense.category}" оплачен!`)
@@ -1182,17 +1184,27 @@ export function Treasury() {
                     <TableRow key={f.monthKey}>
                       <TableCell className="font-medium">{f.month}</TableCell>
                       <TableCell className="text-right">{formatCurrency(f.openingBalance)}</TableCell>
-                      <TableCell className="text-right text-green-700">{formatCurrency(f.expectedIncome)}</TableCell>
-                      <TableCell className="text-right text-green-700 font-medium">{formatCurrency(f.factIncome)}</TableCell>
+                      <TableCell className="text-right text-green-700 cursor-pointer hover:underline hover:text-green-900"
+                        onClick={() => openDetails(f.monthKey, f.month, 'INCOME', 'planned')}
+                        title="Нажмите чтобы увидеть детализацию"
+                      >
+                        {formatCurrency(f.expectedIncome)}
+                      </TableCell>
+                      <TableCell className="text-right text-green-700 font-medium cursor-pointer hover:underline hover:text-green-900"
+                        onClick={() => openDetails(f.monthKey, f.month, 'INCOME', 'actual')}
+                        title="Нажмите чтобы увидеть детализацию"
+                      >
+                        {formatCurrency(f.factIncome)}
+                      </TableCell>
                       <TableCell className="text-right text-red-700 cursor-pointer hover:underline hover:text-red-900"
-                        onClick={() => openExpenseDetails(f.monthKey, f.month, 'planned')}
+                        onClick={() => openDetails(f.monthKey, f.month, 'EXPENSE', 'planned')}
                         title="Нажмите чтобы увидеть детализацию"
                       >
                         {formatCurrency(f.plannedExpenses)}
                       </TableCell>
                       <TableCell
                         className="text-right text-orange-700 font-medium cursor-pointer hover:underline hover:text-orange-900"
-                        onClick={() => openExpenseDetails(f.monthKey, f.month, 'actual')}
+                        onClick={() => openDetails(f.monthKey, f.month, 'EXPENSE', 'actual')}
                         title="Нажмите чтобы увидеть детализацию"
                       >
                         {formatCurrency(f.actualExpenses)}
@@ -1436,25 +1448,26 @@ export function Treasury() {
         </Card>
       </div>
 
-      {/* Диалог детализации расходов */}
-      <Dialog open={isExpenseDetailsOpen} onOpenChange={setIsExpenseDetailsOpen}>
+      {/* Диалог детализации (Приход/Расход) */}
+      <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {expenseDetailsType === 'actual' ? 'Факт расходов' : 'План расходов'}: {expenseDetailsMonth?.month}
+              {detailsType === 'INCOME' ? 'Приход' : 'Расход'} ({detailsSubtype === 'planned' ? 'План' : 'Факт'}): {detailsMonth?.month}
             </DialogTitle>
             <DialogDescription>
-              {expenseDetailsType === 'actual'
-                ? 'Оплаченные расходы за этот месяц'
-                : 'Плановые и повторяющиеся расходы за этот месяц'}
+              {detailsType === 'INCOME'
+                ? (detailsSubtype === 'planned' ? 'Ожидаемые поступления (сделки + план)' : 'Фактические поступления (сделки + факт)')
+                : (detailsSubtype === 'planned' ? 'Плановые и повторяющиеся расходы' : 'Оплаченные расходы')
+              }
             </DialogDescription>
           </DialogHeader>
-          {expenseDetailsLoading ? (
+          {detailsLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
             </div>
-          ) : expenseDetails.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">Нет расходов</div>
+          ) : detailsItems.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">Нет операций</div>
           ) : (
             <>
               <Table>
@@ -1464,33 +1477,39 @@ export function Treasury() {
                     <TableHead>Описание</TableHead>
                     <TableHead>Тип</TableHead>
                     <TableHead className="text-right">Сумма</TableHead>
-                    {expenseDetailsType === 'planned' && <TableHead className="text-center">Действие</TableHead>}
+                    {detailsType === 'EXPENSE' && detailsSubtype === 'planned' && <TableHead className="text-center">Действие</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {expenseDetails.map(e => (
-                    <TableRow key={e.id + e.source}>
-                      <TableCell className="font-medium">{e.category || '-'}</TableCell>
-                      <TableCell className="max-w-xs truncate" title={e.description || undefined}>
-                        {e.description || '-'}
+                  {detailsItems.map(item => (
+                    <TableRow key={item.id + item.source}>
+                      <TableCell className="font-medium">{item.category || '-'}</TableCell>
+                      <TableCell className="max-w-xs truncate" title={item.description || undefined}>
+                        {item.description || '-'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className={e.isRecurring ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}>
-                          {e.isRecurring ? 'Повтор.' : 'План'}
+                        <Badge variant="secondary" className={
+                          item.source === 'deal' ? 'bg-green-100 text-green-800' :
+                            item.isRecurring ? 'bg-purple-100 text-purple-800' :
+                              'bg-blue-100 text-blue-800'
+                        }>
+                          {item.source === 'deal' ? 'Сделка' : (item.isRecurring ? 'Повтор.' : (item.status === 'PAID' || item.status === 'CLOSED' ? 'Факт' : 'План'))}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(e.amount)}</TableCell>
-                      {expenseDetailsType === 'planned' && (
+                      <TableCell className="text-right font-medium">{formatCurrency(item.amount)}</TableCell>
+                      {detailsType === 'EXPENSE' && detailsSubtype === 'planned' && (
                         <TableCell className="text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-green-700 border-green-300 hover:bg-green-50"
-                            onClick={() => openPayExpenseDialog(e)}
-                          >
-                            <Check className="h-4 w-4 mr-1" />
-                            Оплатить
-                          </Button>
+                          {item.source !== 'deal' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-green-700 border-green-300 hover:bg-green-50"
+                              onClick={() => openPayExpenseDialog(item)}
+                            >
+                              <Check className="h-4 w-4 mr-1" />
+                              Оплатить
+                            </Button>
+                          )}
                         </TableCell>
                       )}
                     </TableRow>
@@ -1499,8 +1518,8 @@ export function Treasury() {
               </Table>
               <div className="mt-4 pt-4 border-t flex justify-between items-center">
                 <span className="font-medium">Итого:</span>
-                <span className="text-xl font-bold text-red-700">
-                  {formatCurrency(expenseDetails.reduce((sum, e) => sum + e.amount, 0))}
+                <span className={`text-xl font-bold ${detailsType === 'INCOME' ? 'text-green-700' : 'text-red-700'}`}>
+                  {formatCurrency(detailsItems.reduce((sum, e) => sum + e.amount, 0))}
                 </span>
               </div>
             </>
