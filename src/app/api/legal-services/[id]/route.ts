@@ -25,6 +25,7 @@ export async function PUT(
             data: {
                 client: data.client !== undefined ? String(data.client) : undefined,
                 amount: data.amount !== undefined ? Number(data.amount) : undefined,
+                depositDate: data.depositDate !== undefined ? (data.depositDate ? new Date(data.depositDate) : null) : undefined,
                 serviceDate: data.serviceDate !== undefined ? (data.serviceDate ? new Date(data.serviceDate) : null) : undefined,
                 description: data.description !== undefined ? (data.description ? String(data.description) : null) : undefined
             }

@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
             data: {
                 client: String(data.client ?? ''),
                 amount: Number(data.amount ?? 0),
+                depositDate: data.depositDate ? new Date(data.depositDate) : null,
                 serviceDate: data.serviceDate ? new Date(data.serviceDate) : null,
                 description: data.description ? String(data.description) : null
             }
