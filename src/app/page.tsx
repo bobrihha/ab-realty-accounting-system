@@ -16,7 +16,14 @@ import { CredentialsRegistry } from '@/components/credentials/credentials'
 import { signOut } from 'next-auth/react'
 import { useSession } from 'next-auth/react'
 import { Badge } from '@/components/ui/badge'
-import { DollarSign, FileText, TrendingUp, TrendingDown, Calendar, Users, Clock, Filter } from 'lucide-react'
+import {
+  DollarSign, Briefcase,
+  Users,
+  TrendingUp,
+  Percent,
+  BarChart3,
+  Clock, TrendingDown, Calendar, Filter, FileText
+} from 'lucide-react'
 import { MetricHelp } from '@/components/help/metric-help'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -46,7 +53,9 @@ export default function Dashboard() {
     revenueByDeal: { value: number; count: number }
     depositsRevenue: { value: number; count: number }
     pendingRevenue: { value: number; count: number }
-    dealsPerAgent: { value: number; totalDeals: number; agentCount: number; monthsInPeriod: number }
+    dealsPerAgent?: { value: number; totalDeals: number; agentCount: number; monthsInPeriod: number }
+    salesVolume?: { value: number; count: number }
+    avgCommission?: { value: number; count: number }
   }
   const [employees, setEmployees] = useState<Employee[]>([])
   const [extendedKPI, setExtendedKPI] = useState<ExtendedKPI | null>(null)
@@ -286,7 +295,40 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 ${role === 'AGENT' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`}>
+              <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4`}>
+                <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-indigo-800 flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" />
+                      Объем продаж
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-indigo-900">
+                      {extendedKPI ? fmtCurrency(extendedKPI.salesVolume?.value ?? 0) : '—'}
+                    </div>
+                    <p className="text-xs text-indigo-600 mt-1">
+                      {extendedKPI?.salesVolume?.count ?? 0} сделок
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-cyan-50 to-cyan-100 border-cyan-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-cyan-800 flex items-center gap-2">
+                      <Percent className="h-4 w-4" />
+                      Средняя комиссия
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-cyan-900">
+                      {extendedKPI ? fmtCurrency(extendedKPI.avgCommission?.value ?? 0) : '—'}
+                    </div>
+                    <p className="text-xs text-cyan-600 mt-1">
+                      по всем сделкам
+                    </p>
+                  </CardContent>
+                </Card>
                 <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-blue-800 flex items-center gap-2">

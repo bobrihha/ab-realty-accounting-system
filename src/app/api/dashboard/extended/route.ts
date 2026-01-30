@@ -65,6 +65,16 @@ export async function GET(request: NextRequest) {
             _count: { _all: true }
         })
 
+        // 3. Sales Volume (Объем продаж) - sum of price by dealDate
+        const salesVolume = await db.deal.aggregate({
+            where: {
+                ...baseWhere,
+                dealDate: { gte: from, lte: to }
+            },
+            _sum: { price: true },
+            _count: { _all: true }
+        })
+
         // 3. Deposits Revenue (в задатках) - no date filter, just status DEPOSIT
         const depositsWhere: any = { ...baseWhere, status: 'DEPOSIT' }
         if (agentId && agentId !== 'all' && canViewAllDeals(session.role)) {
@@ -107,7 +117,20 @@ export async function GET(request: NextRequest) {
         // Среднемесячный показатель
         const dealsPerAgent = agentCount > 0 ? totalDealsInPeriod / agentCount / monthsInPeriod : 0
 
+        // Avg Commission (Средняя комиссия)
+        const avgCommission = revenueByDeal._count._all > 0
+            ? (revenueByDeal._sum.commission ?? 0) / revenueByDeal._count._all
+            : 0
+
         return NextResponse.json({
+            salesVolume: {
+                value: salesVolume._sum.price ?? 0,
+                count: salesVolume._count._all ?? 0
+            },
+            avgCommission: {
+                value: avgCommission,
+                count: revenueByDeal._count._all ?? 0
+            },
             revenueByDeposit: {
                 value: revenueByDeposit._sum.commission ?? 0,
                 count: revenueByDeposit._count._all ?? 0

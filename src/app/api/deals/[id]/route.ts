@@ -146,6 +146,11 @@ export async function PUT(
         : data.plannedCloseDate === null
           ? null
           : undefined,
+      plannedMoneyDate: data.plannedMoneyDate
+        ? new Date(data.plannedMoneyDate)
+        : data.plannedMoneyDate === null
+          ? null
+          : undefined, // New field
       contractType: data.contractType ?? undefined,
       legalServices: legalServicesInput ?? undefined,
       notes: data.notes === null ? null : data.notes ?? undefined,

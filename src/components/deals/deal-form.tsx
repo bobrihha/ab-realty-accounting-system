@@ -48,12 +48,15 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
     dealDate: undefined as Date | undefined,
     contractType: '',
     legalServices: false,
+    contractType: '',
+    legalServices: false,
+    plannedMoneyDate: undefined as Date | undefined,
     notes: ''
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     const deal = {
       id: Date.now().toString(),
       client: formData.client,
@@ -69,12 +72,14 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
       dealDate: formData.dealDate?.toISOString(),
       contractType: formData.contractType,
       legalServices: formData.legalServices,
+      legalServices: formData.legalServices,
+      plannedMoneyDate: formData.plannedMoneyDate?.toISOString(),
       notes: formData.notes
     }
 
     onSubmit(deal)
     onClose()
-    
+
     // Reset form
     setFormData({
       client: '',
@@ -90,6 +95,8 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
       dealDate: undefined,
       contractType: '',
       legalServices: false,
+      legalServices: false,
+      plannedMoneyDate: undefined,
       notes: ''
     })
   }
@@ -118,7 +125,7 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
           {/* Основная информация */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Основная информация</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="client">Клиент</Label>
@@ -130,7 +137,7 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
                   required
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="agent">Ответственный агент</Label>
                 <Select value={formData.agent} onValueChange={(value) => setFormData(prev => ({ ...prev, agent: value }))}>
@@ -164,7 +171,7 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
           {/* Финансовая информация */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Финансовая информация</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="price">Цена объекта (₽)</Label>
@@ -178,7 +185,7 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
                   required
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="commission">Комиссия агентства (₽)</Label>
                 <Input
@@ -265,7 +272,7 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
           {/* Даты и статус */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Даты и статус</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Дата брони</Label>
@@ -326,22 +333,53 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
                   </PopoverContent>
                 </Popover>
               </div>
-            </div>
 
-            <div>
-              <Label htmlFor="status">Статус сделки</Label>
-              <Select value={formData.status} onValueChange={(value: any) => setFormData(prev => ({ ...prev, status: value }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="deposit">Задаток</SelectItem>
-                  <SelectItem value="registration">На регистрации</SelectItem>
-                  <SelectItem value="waiting_payment">На оплате</SelectItem>
-                  <SelectItem value="closed">Закрыта</SelectItem>
-                  <SelectItem value="cancelled">Срыв</SelectItem>
-                </SelectContent>
-              </Select>
+              <div>
+                <Label>Планируемое поступление</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !formData.plannedMoneyDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {formData.plannedMoneyDate ? (
+                        format(formData.plannedMoneyDate, "PPP", { locale: ru })
+                      ) : (
+                        <span>Не задано</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={formData.plannedMoneyDate}
+                      onSelect={(date) => setFormData(prev => ({ ...prev, plannedMoneyDate: date }))}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <p className="text-xs text-muted-foreground mt-1">Для казначейства</p>
+              </div>
+
+              <div>
+                <Label htmlFor="status">Статус сделки</Label>
+                <Select value={formData.status} onValueChange={(value: any) => setFormData(prev => ({ ...prev, status: value }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="deposit">Задаток</SelectItem>
+                    <SelectItem value="registration">На регистрации</SelectItem>
+                    <SelectItem value="waiting_payment">На оплате</SelectItem>
+                    <SelectItem value="closed">Закрыта</SelectItem>
+                    <SelectItem value="cancelled">Срыв</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
@@ -368,6 +406,6 @@ export function DealForm({ isOpen, onClose, onSubmit }: DealFormProps) {
           </div>
         </form>
       </DialogContent>
-    </Dialog>
+    </Dialog >
   )
 }

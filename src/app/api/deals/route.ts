@@ -158,6 +158,11 @@ export async function POST(request: NextRequest) {
         depositDate,
         dealDate: data.dealDate ? new Date(data.dealDate) : null,
         plannedCloseDate: data.plannedCloseDate ? new Date(data.plannedCloseDate) : null,
+        plannedMoneyDate: data.plannedMoneyDate
+          ? new Date(data.plannedMoneyDate)
+          : data.plannedMoneyDate === null
+            ? null
+            : undefined,
         contractType: data.contractType ?? 'EXCLUSIVE',
         legalServices,
         legalServicesAmount,

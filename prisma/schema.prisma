@@ -65,6 +65,7 @@ model Deal {
   depositDate     DateTime
   dealDate        DateTime?
   plannedCloseDate DateTime?
+  plannedMoneyDate DateTime? // Планируемая дата прихода денег (для казначейства)
   contractType    ContractType @default(EXCLUSIVE)
   developer       String?      // Название застройщика (при contractType = DEVELOPER)
   legalServices   Boolean      @default(false)

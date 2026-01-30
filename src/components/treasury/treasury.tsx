@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertTriangle, Check, CircleHelp, DollarSign, Edit, Plus, RefreshCw, Trash2, TrendingUp, Wallet } from 'lucide-react'
+import { AlertTriangle, Check, CircleHelp, DollarSign, Edit, Plus, RefreshCw, Trash2, TrendingUp, Wallet, Clock, FileText, CreditCard } from 'lucide-react'
 import { MetricHelp } from '@/components/help/metric-help'
 
 type AccountType = 'BANK' | 'CASH' | 'DIGITAL'
@@ -42,6 +42,7 @@ type MonthlyForecast = {
   monthKey: string
   openingBalance: number
   expectedIncome: number
+  factIncome: number // New field
   plannedExpenses: number
   actualExpenses: number
   closingBalance: number
@@ -51,7 +52,9 @@ type MonthlyForecast = {
 type TreasuryKPI = {
   expectedTotal: { value: number; count: number }
   expectedDeposits: { value: number; count: number }
-  expectedOnPayment: { value: number; count: number }
+  expectedWaitingPayment: { value: number; count: number }
+  expectedRegistration: { value: number; count: number }
+  expectedWaitingInvoice: { value: number; count: number }
 }
 
 type ExpenseDetail = {
@@ -73,7 +76,9 @@ const EXPENSE_CATEGORIES = [
   'ЗП HR',
   'ЗП офис-менеджер',
   'ЗП другое',
+  'ЗП другое',
   'ЗП директора',
+  'Налоги', // 3.6
   'Авито',
   'Циан',
   'Яндекс',
@@ -87,6 +92,7 @@ const EXPENSE_CATEGORIES = [
 const INCOME_CATEGORIES = [
   'Комиссия от застройщика',
   'Комиссия от собственника',
+  'Комиссия от покупателя', // 3.4
   'Юр.услуги',
   'Ипотека',
   'Другое'
@@ -788,32 +794,72 @@ export function Treasury() {
 
         {/* Treasury KPI Cards */}
         {treasuryKPI && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* 1. Ожидаю на оплате */}
+            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-blue-800 flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  Ожидаю итого
+                <CardTitle className="text-sm font-medium text-purple-800 flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  На оплате
                 </CardTitle>
-                <CardDescription className="text-blue-600">Чистая прибыль по активным сделкам</CardDescription>
+                <CardDescription className="text-purple-600">Статус: На оплате</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-blue-900">
-                  {formatCurrency(treasuryKPI.expectedTotal.value)}
+                <div className="text-2xl font-bold text-purple-900">
+                  {formatCurrency(treasuryKPI.expectedWaitingPayment.value)}
                 </div>
-                <p className="text-xs text-blue-600 mt-1">
-                  {treasuryKPI.expectedTotal.count} сделок
+                <p className="text-xs text-purple-600 mt-1">
+                  {treasuryKPI.expectedWaitingPayment.count} сделок
                 </p>
               </CardContent>
             </Card>
 
+            {/* 2. Ожидаю на регистрации */}
+            <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-indigo-800 flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  На регистрации
+                </CardTitle>
+                <CardDescription className="text-indigo-600">Статус: На регистрации</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-indigo-900">
+                  {formatCurrency(treasuryKPI.expectedRegistration.value)}
+                </div>
+                <p className="text-xs text-indigo-600 mt-1">
+                  {treasuryKPI.expectedRegistration.count} сделок
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* 3. Ждём счёт */}
+            <Card className="bg-gradient-to-br from-cyan-50 to-cyan-100 border-cyan-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-cyan-800 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Ждём счёт
+                </CardTitle>
+                <CardDescription className="text-cyan-600">Статус: Ждём счёт</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-cyan-900">
+                  {formatCurrency(treasuryKPI.expectedWaitingInvoice.value)}
+                </div>
+                <p className="text-xs text-cyan-600 mt-1">
+                  {treasuryKPI.expectedWaitingInvoice.count} сделок
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* 4. Задатки */}
             <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-orange-800 flex items-center gap-2">
                   <DollarSign className="h-4 w-4" />
-                  Ожидаю в задатках
+                  В задатке
                 </CardTitle>
-                <CardDescription className="text-orange-600">Чистая прибыль в статусе задатка</CardDescription>
+                <CardDescription className="text-orange-600">Потенциал (не в прогнозе)</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-orange-900">
@@ -821,24 +867,6 @@ export function Treasury() {
                 </div>
                 <p className="text-xs text-orange-600 mt-1">
                   {treasuryKPI.expectedDeposits.count} сделок
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-green-800 flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  Ожидаю в сделках
-                </CardTitle>
-                <CardDescription className="text-green-600">Регистрация, ждём счёт, на оплате</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-900">
-                  {formatCurrency(treasuryKPI.expectedOnPayment.value)}
-                </div>
-                <p className="text-xs text-green-600 mt-1">
-                  {treasuryKPI.expectedOnPayment.count} сделок
                 </p>
               </CardContent>
             </Card>
@@ -875,7 +903,7 @@ export function Treasury() {
                   onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))}
                 >
                   <option value="">Выберите категорию</option>
-                  {EXPENSE_CATEGORIES.map(cat => (
+                  {(newCashFlow.type === 'INCOME' ? ['Комиссия от покупателя', 'Продажа', 'Возврат', 'Прочее'] : ['Налоги', 'Зарплата', 'Аренда', 'Коммунальные услуги', 'Реклама', 'Прочее']).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
@@ -1138,10 +1166,11 @@ export function Treasury() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Месяц</TableHead>
-                  <TableHead className="text-right">Открытие</TableHead>
-                  <TableHead className="text-right">Ожидаю приход</TableHead>
-                  <TableHead className="text-right">План расходов</TableHead>
-                  <TableHead className="text-right">Факт расходов</TableHead>
+                  <TableHead className="text-right">На начало</TableHead>
+                  <TableHead className="text-right">Приход (План)</TableHead>
+                  <TableHead className="text-right">Приход (Факт)</TableHead>
+                  <TableHead className="text-right">Расход (План)</TableHead>
+                  <TableHead className="text-right">Расход (Факт)</TableHead>
                   <TableHead className="text-right">Закрытие</TableHead>
                   <TableHead>Статус</TableHead>
                 </TableRow>
@@ -1154,6 +1183,7 @@ export function Treasury() {
                       <TableCell className="font-medium">{f.month}</TableCell>
                       <TableCell className="text-right">{formatCurrency(f.openingBalance)}</TableCell>
                       <TableCell className="text-right text-green-700">{formatCurrency(f.expectedIncome)}</TableCell>
+                      <TableCell className="text-right text-green-700 font-medium">{formatCurrency(f.factIncome)}</TableCell>
                       <TableCell className="text-right text-red-700 cursor-pointer hover:underline hover:text-red-900"
                         onClick={() => openExpenseDetails(f.monthKey, f.month, 'planned')}
                         title="Нажмите чтобы увидеть детализацию"

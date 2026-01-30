@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url)
         const year = Number(searchParams.get('year') ?? new Date().getFullYear())
         const lawyerRate = Number(searchParams.get('lawyerRate') ?? DEFAULT_LAWYER_RATE)
+        const taxRate = Number(searchParams.get('taxRate') ?? 6) // Default tax rate 6%
 
         const fromDate = startOfYear(new Date(year, 0, 1))
         const toDate = endOfYear(new Date(year, 11, 31))
@@ -79,7 +80,13 @@ export async function GET(request: NextRequest) {
             .map(([mk, data]) => {
                 const totalAmount = data.dealsAmount + data.standaloneAmount
                 const totalCount = data.dealsCount + data.standaloneCount
-                const lawyerSalary = Math.round(totalAmount * lawyerRate / 100)
+
+                // ЗП юриста = (Сумма - Налог) * % юриста
+                // Налог = Сумма * % налога / 100
+                const taxAmount = totalAmount * taxRate / 100
+                const netAmount = totalAmount - taxAmount
+                const lawyerSalary = Math.round(netAmount * lawyerRate / 100)
+
                 return {
                     monthKey: mk,
                     month: formatMonthLabel(mk),
@@ -110,6 +117,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
             year,
             lawyerRate,
+            taxRate,
             months: monthlyData,
             totals
         })

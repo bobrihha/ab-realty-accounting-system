@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
             data: {
               name: String(data.name ?? ''),
               balance: Number(data.balance ?? 0),
-              type: String(data.type ?? 'BANK').toUpperCase()
+              type: String(data.type ?? 'BANK').toUpperCase() as any // Cast to any to avoid Enum mismatch if types strictly checked
             }
           }),
           { status: 201 }
@@ -147,13 +147,13 @@ async function computeForecast(months: number, year: number | null = null) {
 
   // Для исторического просмотра (прошлый год) считаем доход из закрытых сделок по месяцам
   // Для прогноза — сумма netProfit всех активных сделок
-  let expectedIncomeForForecast = 0
+  // Для прогноза — сумма netProfit всех активных сделок
+  let activeDeals: any[] = []
   if (!isHistoricalView) {
-    const expectedTotal = await db.deal.aggregate({
+    activeDeals = await db.deal.findMany({
       where: { status: { notIn: ['CLOSED', 'CANCELLED'] } },
-      _sum: { netProfit: true }
+      select: { netProfit: true, plannedMoneyDate: true, plannedCloseDate: true, dealDate: true }
     })
-    expectedIncomeForForecast = expectedTotal._sum.netProfit ?? 0
   }
 
   // Повторяющиеся расходы — загружаем список для проверки по категориям
@@ -239,61 +239,16 @@ async function computeForecast(months: number, year: number | null = null) {
     // actualExpenses по дате оплаты (для отображения в колонке "Факт расходов")
     const actualExpenseSum = actualExpenses._sum.amount ?? 0
 
-    // Расчёт дохода от сделок
-    let dealsIncome = 0
-    if (isHistoricalView) {
-      // Для исторического просмотра: берём сумму netProfit закрытых сделок за этот месяц
-      const closedDealsInMonth = await db.deal.aggregate({
-        where: {
-          dealDate: { gte: from, lte: to },
-          status: 'CLOSED'
-        },
-        _sum: { netProfit: true }
-      })
-      dealsIncome = closedDealsInMonth._sum.netProfit ?? 0
-    } else {
-      // Для прогноза: весь ожидаемый доход от сделок показываем в первом месяце
-      dealsIncome = i === 0 ? expectedIncomeForForecast : 0
-    }
-
     // Расчёт ручного дохода из операций (INCOME)
     // Учитываем и PLANNED и PAID, так как PAID уже увеличил баланс (в openingBalance),
     // но для отображения в колонке "Ожидаю приход" (или "Приход") мы хотим видеть общую сумму приходов за месяц?
-    // В текущей логике:
-    // Closing = Opening + Income - Expense
-    // Если Income был PAID, он уже в Opening следующего месяца (через баланс счета).
-    // Значит, если мы добавляем PAID Income сюда, мы задвоим?
-    // Проверим формулу: Closing = (OpeningBalance_start + PaidIncome) + (ExpectedIncome) - ...
-    // Нет, OpeningBalance берется на начало итерации.
-    // Если операция была PAID в прошлом, она в OpeningBalance.
-    // Если операция PAID в ЭТОМ месяце, она тоже уже в OpeningBalance (если мы берем текущий баланс счетов как старт).
-    // НО: мы берем `openingBalance = accounts.reduce` ТОЛЬКО для первого месяца (i=0).
-    // И этот баланс УЖЕ включает все PAID операции.
-    // Значит, для i=0, добавлять PAID Income НЕЛЬЗЯ (он уже в балансе).
-    // А для будущих месяцев (i>0)?
-    // OpeningBalance[i] = ClosingBalance[i-1].
-    // Значит, логика "Закрытие = Открытие + Приход - Расход" строит цепочку.
 
-    // ВАЖНО:
-    // Если мы хотим, чтобы колонка "Ожидаю приход" показывала ВСЕ приходы месяца, но формула баланса не ломалась.
-    // Формула: Closing = Opening + MonthIncome - PlannedExpense.
-    // Если MonthIncome включает PAID (который уже в Opening), то Closing будет завышен.
+    // ВАЖНО: 
+    // "Ожидаю приход" (Forecast) = Ожидаемая прибыль от сделок + Планируемые ручные приходы
+    // "Факт прихода" (Fact) = Закрытая прибыль от сделок + Фактические ручные приходы
 
-    // ДАВАЙТЕ РАЗДЕЛИМ:
-    // 1. Manual Planned Income (еще не получен) -> Добавляем в баланс.
-    // 2. Manual Paid Income (уже получен) -> НЕ добавляем в баланс (уже там), НО можем показать в UI чисто информативно?
-    // Клиент спрашивает: "в отчет сбить приход в месяц".
-    // Видимо, он хочет видеть цифру.
-    // Но если мы добавим ее в `expectedIncome`, она сломает `closingBalance`.
-
-    // РЕШЕНИЕ:
-    // Income = DealsIncome (NetProfit) + ManualPlannedIncome.
-    // ManualPaidIncome игнорируем для расчета баланса (он уже в `openingBalance`),
-    // НО в UI можно вывести отдельной строкой или тултипом.
-    // Однако, `monthExpectedIncome` используется для расчета `closingBalance`.
-
-    // Добавим Manual Planned Income:
-    const manualPlannedIncome = await db.cashFlow.aggregate({
+    // 1. Ручные приходы
+    const plannedIncomeAgg = await db.cashFlow.aggregate({
       where: {
         type: 'INCOME',
         status: 'PLANNED',
@@ -301,12 +256,75 @@ async function computeForecast(months: number, year: number | null = null) {
       },
       _sum: { amount: true }
     })
-    const manualIncomeSum = manualPlannedIncome._sum.amount ?? 0
+    const plannedIncomeSum = plannedIncomeAgg._sum.amount ?? 0
 
-    const monthExpectedIncome = dealsIncome + manualIncomeSum
+    const paidIncomeAgg = await db.cashFlow.aggregate({
+      where: {
+        type: 'INCOME',
+        status: 'PAID',
+        actualDate: { gte: from, lte: to }
+      },
+      _sum: { amount: true }
+    })
+    const paidIncomeSum = paidIncomeAgg._sum.amount ?? 0
+
+    // 2. Доход от сделок
+    let dealsExpected = 0
+    let dealsFact = 0
+
+    if (isHistoricalView) {
+      // Исторический: Факт = закрытые сделки
+      const closedDeals = await db.deal.aggregate({
+        where: { dealDate: { gte: from, lte: to }, status: 'CLOSED' },
+        _sum: { netProfit: true }
+      })
+      dealsFact = closedDeals._sum.netProfit ?? 0
+      // Ожидаемое в прошлом = 0 (уже стало фактом или перенеслось)
+    } else {
+      // Прогноз: Факт = закрытые сделки в этом месяце (если текущий месяц)
+      const closedDeals = await db.deal.aggregate({
+        where: { dealDate: { gte: from, lte: to }, status: 'CLOSED' },
+        _sum: { netProfit: true }
+      })
+      dealsFact = closedDeals._sum.netProfit ?? 0
+
+      // Ожидаемое = сумма netProfit активных сделок, которые падают на этот месяц
+      // Логика даты: plannedMoneyDate -> plannedCloseDate -> dealDate -> Creation Date (fallback to now)
+      // Если дата меньше текущего месяца — переносим на первый месяц (i=0) (просроченные поступления)
+      // ИЛИ показываем в месяце, когда ждали? Обычно просрочку показывают "сегодня/в ближайшем будущем". 
+      // Для простоты: если дата < startOfMonth(current), кидаем в первый месяц прогноза.
+
+      const compareMonth = date.getMonth()
+      const compareYear = date.getFullYear()
+
+      for (const d of activeDeals) {
+        const targetDate = d.plannedMoneyDate ?? d.plannedCloseDate ?? d.dealDate ?? new Date()
+        const tYear = targetDate.getFullYear()
+        const tMonth = targetDate.getMonth()
+
+        if (
+          (tYear === compareYear && tMonth === compareMonth) ||
+          (i === 0 && (tYear < compareYear || (tYear === compareYear && tMonth < compareMonth)))
+        ) {
+          dealsExpected += (d.netProfit ?? 0)
+        }
+      }
+    }
+
+    const monthExpectedIncome = dealsExpected + plannedIncomeSum
+    const monthFactIncome = dealsFact + paidIncomeSum
 
     // Закрытие = Открытие + Ожидаемый приход - План расходов
     // (Факт расходов НЕ вычитаем, т.к. он уже уменьшил баланс счетов при оплате)
+    // НО: если мы используем openingBalance из реальных счетов, он уже учитывает все PAID операции до текущего момента.
+    // Если i=0 (текущий месяц), openingBalance актуален.
+    // Если i>0, openingBalance = prevClosing.
+    // Closing = Opening + (Income - Expense)? 
+    // Мы хотим прогноз баланса.
+    // Прогноз Баланса = Текущий + Все будущие Плановые Приходы - Все будущие Плановые Расходы.
+    // Факт Приходы уже в балансе.
+    // Для прогноза мы берем monthExpectedIncome (это ПЛАН).
+
     const closingBalance = openingBalance + monthExpectedIncome - plannedExpenseSum
 
     const status = closingBalance < 0 ? 'critical' : 'positive'
@@ -316,6 +334,7 @@ async function computeForecast(months: number, year: number | null = null) {
       monthKey: monthKey(date),
       openingBalance,
       expectedIncome: monthExpectedIncome,
+      factIncome: monthFactIncome, // New field
       plannedExpenses: plannedExpenseSum,
       actualExpenses: actualExpenseSum,
       closingBalance,

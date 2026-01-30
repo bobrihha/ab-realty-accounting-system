@@ -30,6 +30,7 @@ type Deal = {
   depositDate: string
   dealDate: string | null
   plannedCloseDate: string | null
+  plannedMoneyDate: string | null // New field
   contractType: ContractType
   developer: string | null
   legalServices: boolean
@@ -118,7 +119,8 @@ export function DealsRegistry() {
     otherExpense: '0',
     commissionsManual: false,
     agentRateApplied: '',
-    ropRateApplied: ''
+    ropRateApplied: '',
+    plannedMoneyDate: '' // New field
   })
 
   const load = async () => {
@@ -309,6 +311,7 @@ export function DealsRegistry() {
       depositDate: formData.depositDate || undefined,
       dealDate: formData.dealDate || undefined,
       plannedCloseDate: formData.plannedCloseDate || undefined,
+      plannedMoneyDate: formData.plannedMoneyDate || undefined, // New field
       contractType: formData.contractType,
       developer: formData.contractType === 'DEVELOPER' && formData.developer.trim() ? formData.developer.trim() : null,
       legalServices: formData.legalServices,
@@ -350,6 +353,7 @@ export function DealsRegistry() {
         depositDate: editingDeal.depositDate,
         dealDate: editingDeal.dealDate,
         plannedCloseDate: editingDeal.plannedCloseDate,
+        plannedMoneyDate: editingDeal.plannedMoneyDate, // New field (ensure type Deal has it)
         contractType: editingDeal.contractType,
         developer: editingDeal.developer,
         legalServices: editingDeal.legalServices,
@@ -513,6 +517,15 @@ export function DealsRegistry() {
                       type="date"
                       value={formData.plannedCloseDate}
                       onChange={e => setFormData(p => ({ ...p, plannedCloseDate: e.target.value }))}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Label htmlFor="plannedMoneyDate">Планируемая дата прихода денег</Label>
+                    <Input
+                      id="plannedMoneyDate"
+                      type="date"
+                      value={formData.plannedMoneyDate}
+                      onChange={e => setFormData(p => ({ ...p, plannedMoneyDate: e.target.value }))}
                     />
                   </div>
                   <div>
@@ -1178,6 +1191,14 @@ export function DealsRegistry() {
                     type="date"
                     value={editingDeal.plannedCloseDate ? editingDeal.plannedCloseDate.split('T')[0] : ''}
                     onChange={e => setEditingDeal(d => (d ? { ...d, plannedCloseDate: e.target.value || null } : d))}
+                  />
+                </div>
+                <div>
+                  <Label>Планируемая дата прихода денег</Label>
+                  <Input
+                    type="date"
+                    value={editingDeal.plannedMoneyDate ? editingDeal.plannedMoneyDate.split('T')[0] : ''}
+                    onChange={e => setEditingDeal(d => (d ? { ...d, plannedMoneyDate: e.target.value || null } : d))}
                   />
                 </div>
                 <div>

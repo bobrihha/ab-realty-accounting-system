@@ -20,13 +20,26 @@ export async function GET() {
             _count: { _all: true }
         })
 
-        // Expected on payment - REGISTRATION, WAITING_INVOICE, WAITING_PAYMENT
-        const expectedOnPayment = await db.deal.aggregate({
-            where: { status: { in: ['REGISTRATION', 'WAITING_INVOICE', 'WAITING_PAYMENT'] } },
+        // 1. Ожидаю на оплате (WAITING_PAYMENT)
+        const expectedWaitingPayment = await db.deal.aggregate({
+            where: { status: 'WAITING_PAYMENT' },
             _sum: { netProfit: true },
             _count: { _all: true }
         })
 
+        // 2. Ожидаю на регистрации (REGISTRATION)
+        const expectedRegistration = await db.deal.aggregate({
+            where: { status: 'REGISTRATION' },
+            _sum: { netProfit: true },
+            _count: { _all: true }
+        })
+
+        // 3. Ожидаю на выставлении счета (WAITING_INVOICE)
+        const expectedWaitingInvoice = await db.deal.aggregate({
+            where: { status: 'WAITING_INVOICE' },
+            _sum: { netProfit: true },
+            _count: { _all: true }
+        })
         return NextResponse.json({
             expectedTotal: {
                 value: expectedTotal._sum.netProfit ?? 0,
@@ -36,9 +49,17 @@ export async function GET() {
                 value: expectedDeposits._sum.netProfit ?? 0,
                 count: expectedDeposits._count._all ?? 0
             },
-            expectedOnPayment: {
-                value: expectedOnPayment._sum.netProfit ?? 0,
-                count: expectedOnPayment._count._all ?? 0
+            expectedWaitingPayment: {
+                value: expectedWaitingPayment._sum.netProfit ?? 0,
+                count: expectedWaitingPayment._count._all ?? 0
+            },
+            expectedRegistration: {
+                value: expectedRegistration._sum.netProfit ?? 0,
+                count: expectedRegistration._count._all ?? 0
+            },
+            expectedWaitingInvoice: {
+                value: expectedWaitingInvoice._sum.netProfit ?? 0,
+                count: expectedWaitingInvoice._count._all ?? 0
             }
         })
     } catch (error) {

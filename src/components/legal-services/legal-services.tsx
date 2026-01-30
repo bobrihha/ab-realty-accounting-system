@@ -56,6 +56,7 @@ export function LegalServicesRegistry() {
     const currentYear = new Date().getFullYear()
     const [selectedYear, setSelectedYear] = useState(String(currentYear))
     const [lawyerRate, setLawyerRate] = useState(60)
+    const [taxRate, setTaxRate] = useState(6)
 
     const [legalServices, setLegalServices] = useState<LegalService[]>([])
     const [stats, setStats] = useState<LegalServicesStats | null>(null)
@@ -73,7 +74,7 @@ export function LegalServicesRegistry() {
     })
 
     const loadStats = async () => {
-        const statsRes = await fetch(`/api/legal-services/stats?year=${selectedYear}&lawyerRate=${lawyerRate}`, { cache: 'no-store' })
+        const statsRes = await fetch(`/api/legal-services/stats?year=${selectedYear}&lawyerRate=${lawyerRate}&taxRate=${taxRate}`, { cache: 'no-store' })
         if (statsRes.ok) {
             setStats(await statsRes.json())
         }
@@ -100,7 +101,7 @@ export function LegalServicesRegistry() {
 
     useEffect(() => {
         loadStats().catch(console.error)
-    }, [selectedYear, lawyerRate])
+    }, [selectedYear, lawyerRate, taxRate])
 
     const resetForm = () => {
         setFormData({ client: '', amount: '', depositDate: '', serviceDate: '', description: '' })
@@ -119,7 +120,7 @@ export function LegalServicesRegistry() {
                 client: formData.client,
                 amount: parseFloat(formData.amount) || 0,
                 depositDate: formData.depositDate || undefined,
-                serviceDate: formData.serviceDate || undefined,
+                serviceDate: formData.serviceDate || formData.depositDate || new Date().toISOString(), // Fallback to depositDate or now if empty
                 description: formData.description || undefined
             })
         })
@@ -138,7 +139,7 @@ export function LegalServicesRegistry() {
                 client: formData.client,
                 amount: parseFloat(formData.amount) || 0,
                 depositDate: formData.depositDate || undefined,
-                serviceDate: formData.serviceDate || undefined,
+                serviceDate: formData.serviceDate || formData.depositDate || new Date().toISOString(),
                 description: formData.description || undefined
             })
         })
@@ -153,6 +154,7 @@ export function LegalServicesRegistry() {
         const res = await fetch(`/api/legal-services/${id}`, { method: 'DELETE' })
         if (!res.ok) throw new Error('Не удалось удалить юр.услугу')
         await load()
+        resetForm() // Clear form after delete to prevent old data from reappearing
     }
 
     const openEdit = (service: LegalService) => {
@@ -208,12 +210,26 @@ export function LegalServicesRegistry() {
                             max={100}
                         />
                     </div>
+                    <div className="flex items-center gap-2">
+                        <Label className="text-sm whitespace-nowrap">% налога:</Label>
+                        <Input
+                            type="number"
+                            className="w-[70px]"
+                            value={taxRate}
+                            onChange={e => setTaxRate(Number(e.target.value) || 0)}
+                            min={0}
+                            max={100}
+                        />
+                    </div>
                     <Button variant="outline" onClick={() => load()}>
                         <RefreshCw className="h-4 w-4 mr-2" />
                         Обновить
                     </Button>
                     {isOwner && (
-                        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                        <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+                            setIsCreateDialogOpen(open)
+                            if (!open) resetForm()
+                        }}>
                             <DialogTrigger asChild>
                                 <Button>
                                     <Plus className="h-4 w-4 mr-2" />
@@ -342,7 +358,7 @@ export function LegalServicesRegistry() {
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-lg">Статистика по месяцам</CardTitle>
-                        <CardDescription>Юр.услуги по дате сделки/услуги, ЗП юриста = {lawyerRate}% от суммы</CardDescription>
+                        <CardDescription>Юр.услуги по дате сделки/услуги, ЗП юриста = (Сумма - {taxRate}% налог) * {lawyerRate}%</CardDescription>
                     </CardHeader>
                     <CardContent className="p-0">
                         <div className="rounded-md border">
