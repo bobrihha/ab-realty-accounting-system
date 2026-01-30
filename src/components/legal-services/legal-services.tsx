@@ -17,7 +17,7 @@ type LegalService = {
     client: string
     amount: number
     depositDate: string | null
-    serviceDate: string
+    serviceDate: string | null
     description: string | null
 }
 
@@ -438,7 +438,7 @@ export function LegalServicesRegistry() {
                                         <TableRow key={service.id}>
                                             <TableCell className="font-medium">{service.client}</TableCell>
                                             <TableCell>{service.depositDate ? formatDate(service.depositDate) : '-'}</TableCell>
-                                            <TableCell>{formatDate(service.serviceDate)}</TableCell>
+                                            <TableCell>{service.serviceDate ? formatDate(service.serviceDate) : '-'}</TableCell>
                                             <TableCell className="text-right font-medium">{formatCurrency(service.amount)}</TableCell>
                                             <TableCell className="max-w-xs truncate">{service.description || '-'}</TableCell>
                                             <TableCell>
