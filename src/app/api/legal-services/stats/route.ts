@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
 
         // Добавляем отдельные услуги
         for (const service of standaloneLegalServices) {
+            if (!service.serviceDate) continue
             const mk = monthKey(service.serviceDate)
             if (months[mk]) {
                 months[mk].standaloneCount += 1

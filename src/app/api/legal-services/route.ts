@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
             data: {
                 client: String(data.client ?? ''),
                 amount: Number(data.amount ?? 0),
-                serviceDate: data.serviceDate ? new Date(data.serviceDate) : new Date(),
+                serviceDate: data.serviceDate ? new Date(data.serviceDate) : null,
                 description: data.description ? String(data.description) : null
             }
         })

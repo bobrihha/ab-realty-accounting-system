@@ -186,7 +186,7 @@ model LegalService {
   client      String
   amount      Float
   depositDate DateTime? // Дата брони
-  serviceDate DateTime  // Дата сделки (для расчётов)
+  serviceDate DateTime? // Дата сделки (для расчётов)
   description String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

@@ -120,7 +120,7 @@ export function LegalServicesRegistry() {
                 client: formData.client,
                 amount: parseFloat(formData.amount) || 0,
                 depositDate: formData.depositDate || undefined,
-                serviceDate: formData.serviceDate || formData.depositDate || new Date().toISOString(), // Fallback to depositDate or now if empty
+                serviceDate: formData.serviceDate || undefined, // No fallback
                 description: formData.description || undefined
             })
         })
@@ -139,8 +139,7 @@ export function LegalServicesRegistry() {
                 client: formData.client,
                 amount: parseFloat(formData.amount) || 0,
                 depositDate: formData.depositDate || undefined,
-                serviceDate: formData.serviceDate || formData.depositDate || new Date().toISOString(),
-                description: formData.description || undefined
+                serviceDate: formData.serviceDate || undefined, // No fallback
             })
         })
         if (!res.ok) throw new Error('Не удалось обновить юр.услугу')
