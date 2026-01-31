@@ -22,6 +22,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const data = await request.json()
     const nextType = String(data.type ?? existing.type).toUpperCase() as 'INCOME' | 'EXPENSE'
     const nextAmount = Number(data.amount ?? existing.amount)
+    // netAmount - доход после вычета комиссий (только для INCOME)
+    const nextNetAmount = nextType === 'INCOME'
+      ? (data.netAmount !== undefined ? (data.netAmount === null ? null : Number(data.netAmount)) : existing.netAmount)
+      : null
     const nextPlannedDate = data.plannedDate ? new Date(data.plannedDate) : existing.plannedDate
     const nextStatus = String(data.status ?? (data.actualDate === null ? 'PLANNED' : data.actualDate ? 'PAID' : existing.status)).toUpperCase() as
       | 'PLANNED'
@@ -73,6 +77,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         data: {
           type: nextType,
           amount: nextAmount,
+          netAmount: nextNetAmount,
           category: nextCategory,
           status: nextStatus,
           plannedDate: nextPlannedDate,

@@ -27,6 +27,7 @@ type CashFlowItem = {
   id: string
   type: CashFlowType
   amount: number
+  netAmount: number | null // Доход (после вычета комиссий)
   category: string
   status: PaymentStatus
   plannedDate: string
@@ -178,6 +179,7 @@ export function Treasury() {
     type: 'INCOME' as CashFlowType,
     status: 'PAID' as PaymentStatus,
     amount: '',
+    netAmount: '', // Доход (после вычета комиссий)
     category: '',
     plannedDate: '',
     actualDate: '',
@@ -380,6 +382,7 @@ export function Treasury() {
       type: item.type,
       status: item.status,
       amount: String(item.amount),
+      netAmount: item.netAmount !== null ? String(item.netAmount) : '',
       category: item.category,
       plannedDate: item.plannedDate.slice(0, 10),
       actualDate: item.actualDate ? item.actualDate.slice(0, 10) : '',
@@ -396,6 +399,7 @@ export function Treasury() {
       type: item.type,
       status: 'PAID',
       amount: String(item.amount),
+      netAmount: item.netAmount !== null ? String(item.netAmount) : '',
       category: item.category,
       plannedDate: item.plannedDate.slice(0, 10),
       actualDate: item.actualDate ? item.actualDate.slice(0, 10) : item.plannedDate.slice(0, 10),
@@ -465,6 +469,7 @@ export function Treasury() {
         type: newCashFlow.type,
         status,
         amount: parseFloat(newCashFlow.amount) || 0,
+        netAmount: newCashFlow.type === 'INCOME' && newCashFlow.netAmount ? parseFloat(newCashFlow.netAmount) : null,
         category: newCashFlow.category,
         plannedDate,
         actualDate: status === 'PAID' ? (newCashFlow.actualDate || plannedDate) : null,
@@ -475,7 +480,7 @@ export function Treasury() {
     })
     if (!res.ok) throw new Error('Не удалось добавить операцию')
     setIsCashFlowDialogOpen(false)
-    setNewCashFlow({ type: 'INCOME', status: 'PAID', amount: '', category: '', plannedDate: '', actualDate: '', description: '', accountId: '', isRecurring: false })
+    setNewCashFlow({ type: 'INCOME', status: 'PAID', amount: '', netAmount: '', category: '', plannedDate: '', actualDate: '', description: '', accountId: '', isRecurring: false })
     await load()
   }
 
@@ -492,6 +497,7 @@ export function Treasury() {
         type: newCashFlow.type,
         status,
         amount: parseFloat(newCashFlow.amount) || 0,
+        netAmount: newCashFlow.type === 'INCOME' && newCashFlow.netAmount ? parseFloat(newCashFlow.netAmount) : null,
         category: newCashFlow.category,
         plannedDate,
         actualDate: status === 'PAID' ? (newCashFlow.actualDate || plannedDate) : null,
@@ -504,7 +510,7 @@ export function Treasury() {
     if (!res.ok) throw new Error('Не удалось обновить операцию')
     setIsEditCashFlowDialogOpen(false)
     setEditingCashFlow(null)
-    setNewCashFlow({ type: 'INCOME', status: 'PAID', amount: '', category: '', plannedDate: '', actualDate: '', description: '', accountId: '', isRecurring: false })
+    setNewCashFlow({ type: 'INCOME', status: 'PAID', amount: '', netAmount: '', category: '', plannedDate: '', actualDate: '', description: '', accountId: '', isRecurring: false })
     await load()
   }
 
@@ -693,13 +699,24 @@ export function Treasury() {
                     </select>
                   </div>
                   <div>
-                    <Label>Сумма</Label>
+                    <Label>Сумма (комиссия)</Label>
                     <Input
                       value={newCashFlow.amount}
                       type="number"
                       onChange={e => setNewCashFlow(p => ({ ...p, amount: e.target.value }))}
                     />
                   </div>
+                  {newCashFlow.type === 'INCOME' && (
+                    <div>
+                      <Label>Доход (после %)</Label>
+                      <Input
+                        value={newCashFlow.netAmount}
+                        type="number"
+                        placeholder="Оставьте пустым = сумма"
+                        onChange={e => setNewCashFlow(p => ({ ...p, netAmount: e.target.value }))}
+                      />
+                    </div>
+                  )}
                   <div className="col-span-2">
                     <Label>Категория</Label>
                     <select

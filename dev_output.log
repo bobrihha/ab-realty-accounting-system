@@ -228,3 +228,5 @@ Unknown field `clientName` for select statement on model `Deal`. Available optio
  GET /api/treasury/kpi 200 in 3.7s (compile: 3.4s, proxy.ts: 6ms, render: 298ms)
  GET / 200 in 403ms (compile: 288ms, proxy.ts: 58ms, render: 57ms)
  GET / 200 in 2.1s (compile: 89ms, proxy.ts: 1972ms, render: 87ms)
+ ○ Compiling /api/auth/[...nextauth] ...
+ GET /api/auth/session 200 in 28.1s (compile: 27.2s, render: 968ms)

@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
                         status: 'PAID',
                         actualDate: { gte: from, lte: to }
                     },
-                    select: { id: true, amount: true, category: true, description: true, actualDate: true },
+                    select: { id: true, amount: true, netAmount: true, category: true, description: true, actualDate: true },
                     orderBy: { actualDate: 'asc' }
                 })
 
@@ -158,7 +158,8 @@ export async function GET(request: NextRequest) {
                         id: i.id,
                         category: i.category,
                         description: i.description,
-                        amount: i.amount,
+                        amount: i.netAmount ?? i.amount, // Используем netAmount (доход) если указан
+                        fullAmount: i.amount, // Полная сумма для справки
                         date: i.actualDate,
                         source: 'cashflow',
                         status: 'PAID'
@@ -183,7 +184,7 @@ export async function GET(request: NextRequest) {
                         status: 'PLANNED',
                         plannedDate: { gte: from, lte: to }
                     },
-                    select: { id: true, amount: true, category: true, description: true, plannedDate: true, accountId: true },
+                    select: { id: true, amount: true, netAmount: true, category: true, description: true, plannedDate: true, accountId: true },
                     orderBy: { plannedDate: 'asc' }
                 })
 
@@ -239,7 +240,8 @@ export async function GET(request: NextRequest) {
                         id: i.id,
                         category: i.category,
                         description: i.description,
-                        amount: i.amount,
+                        amount: i.netAmount ?? i.amount, // Используем netAmount (доход) если указан
+                        fullAmount: i.amount, // Полная сумма для справки
                         date: i.plannedDate,
                         source: 'cashflow',
                         status: 'PLANNED',

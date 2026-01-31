@@ -100,6 +100,7 @@ model CashFlow {
   id          String       @id @default(cuid())
   type        CashFlowType // INCOME, EXPENSE
   amount      Float
+  netAmount   Float?       // Доход (для приходов) — сумма после вычета комиссий агентов/РОП
   category    String
   status      PaymentStatus @default(PLANNED) // PLANNED (план), PAID (факт)
   plannedDate DateTime

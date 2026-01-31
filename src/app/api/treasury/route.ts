@@ -74,6 +74,8 @@ export async function POST(request: NextRequest) {
       case 'cashflow':
         const typeUpper = String(data.type ?? 'EXPENSE').toUpperCase() as 'INCOME' | 'EXPENSE'
         const amount = Number(data.amount ?? 0)
+        // netAmount - доход после вычета комиссий (только для INCOME)
+        const netAmount = typeUpper === 'INCOME' && data.netAmount !== undefined ? Number(data.netAmount) : null
         const plannedDate = data.plannedDate ? new Date(data.plannedDate) : new Date()
         const statusUpper = String(data.status ?? (data.actualDate ? 'PAID' : 'PLANNED')).toUpperCase() as 'PLANNED' | 'PAID'
         const nextActualDate = statusUpper === 'PAID' ? (data.actualDate ? new Date(data.actualDate) : plannedDate) : null
@@ -92,6 +94,7 @@ export async function POST(request: NextRequest) {
             data: {
               type: typeUpper,
               amount,
+              netAmount,
               category: String(data.category ?? ''),
               status: statusUpper,
               plannedDate,
@@ -248,25 +251,26 @@ async function computeForecast(months: number, year: number | null = null) {
     // "Факт прихода" (Fact) = Закрытая прибыль от сделок + Фактические ручные приходы
 
     // 1. Ручные приходы
-    const plannedIncomeAgg = await db.cashFlow.aggregate({
+    // Для ручных приходов используем netAmount (доход) если указан, иначе amount
+    const plannedIncomeRecords = await db.cashFlow.findMany({
       where: {
         type: 'INCOME',
         status: 'PLANNED',
         plannedDate: { gte: from, lte: to }
       },
-      _sum: { amount: true }
+      select: { amount: true, netAmount: true }
     })
-    const plannedIncomeSum = plannedIncomeAgg._sum.amount ?? 0
+    const plannedIncomeSum = plannedIncomeRecords.reduce((sum, r) => sum + (r.netAmount ?? r.amount), 0)
 
-    const paidIncomeAgg = await db.cashFlow.aggregate({
+    const paidIncomeRecords = await db.cashFlow.findMany({
       where: {
         type: 'INCOME',
         status: 'PAID',
         actualDate: { gte: from, lte: to }
       },
-      _sum: { amount: true }
+      select: { amount: true, netAmount: true }
     })
-    const paidIncomeSum = paidIncomeAgg._sum.amount ?? 0
+    const paidIncomeSum = paidIncomeRecords.reduce((sum, r) => sum + (r.netAmount ?? r.amount), 0)
 
     // 2. Доход от сделок
     let dealsExpected = 0
