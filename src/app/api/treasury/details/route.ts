@@ -38,6 +38,11 @@ export async function GET(request: NextRequest) {
         // ---------------------------------------------------------
         if (!isIncome) {
             const EXCLUDED_PAYROLL_CATEGORIES = ['ЗП агентам (выплата)', 'ЗП РОП (выплата)']
+            const normalizeDesc = (description: string | null) => (description ?? '').trim()
+            const recurringKey = (category: string, description: string | null, amount: number) =>
+                `${category}||${normalizeDesc(description)}||${Number(amount ?? 0).toFixed(2)}`
+            const recurringFallbackKey = (category: string, amount: number) =>
+                `${category}||${Number(amount ?? 0).toFixed(2)}`
 
             if (subtype === 'actual') {
                 // Actual Expenses (PAID)
@@ -89,14 +94,20 @@ export async function GET(request: NextRequest) {
                         status: 'PAID',
                         plannedDate: { gte: from, lte: to }
                     },
-                    select: { category: true }
+                    select: { category: true, description: true, amount: true }
                 })
-                const paidCategories = new Set(paidExpensesForThisMonth.map(e => e.category))
+                const paidRecurringKeys = new Set(paidExpensesForThisMonth.map(e => recurringKey(e.category, e.description ?? null, e.amount)))
+                const paidRecurringFallbackKeys = new Set(paidExpensesForThisMonth.map(e => recurringFallbackKey(e.category, e.amount)))
 
-                const unpaidRecurring = recurringExpenses.filter(e =>
-                    !paidCategories.has(e.category) &&
-                    !EXCLUDED_PAYROLL_CATEGORIES.includes(e.category)
-                )
+                const unpaidRecurring = recurringExpenses.filter(e => {
+                    if (EXCLUDED_PAYROLL_CATEGORIES.includes(e.category)) return false
+                    const key = recurringKey(e.category, e.description ?? null, e.amount)
+                    const desc = normalizeDesc(e.description ?? null)
+                    const isPaid = desc
+                        ? paidRecurringKeys.has(key)
+                        : paidRecurringKeys.has(key) || paidRecurringFallbackKeys.has(recurringFallbackKey(e.category, e.amount))
+                    return !isPaid
+                })
 
                 items = [
                     ...unpaidRecurring.map(e => ({

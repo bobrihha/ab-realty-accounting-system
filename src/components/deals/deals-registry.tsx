@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { DEFAULT_INCOME_CATEGORIES } from '@/lib/cashflow-defaults'
 import { useSession } from 'next-auth/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,7 @@ import { Search, Plus, Edit, Trash2, Eye, RefreshCw, DollarSign, ChevronDown, X 
 type DealStatus = 'DEPOSIT' | 'REGISTRATION' | 'WAITING_INVOICE' | 'WAITING_PAYMENT' | 'CLOSED' | 'CANCELLED'
 type ContractType = 'EXCLUSIVE' | 'SELECTION' | 'DEVELOPER' | 'SELLER'
 type Employee = { id: string; name: string }
+type Account = { id: string; name: string }
 
 type Deal = {
   id: string
@@ -50,6 +52,8 @@ type Deal = {
   commissionsManual: boolean
   agent: Employee
   rop: Employee | null
+  closingAccountId?: string | null
+  closingCategory?: string | null
 }
 
 const statusConfig: Record<DealStatus, { label: string; color: string }> = {
@@ -73,10 +77,13 @@ const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', '�
 export function DealsRegistry() {
   const { data: session } = useSession()
   const role = ((session as any)?.role as string | undefined) ?? 'AGENT'
-  const canManageDeals = role === 'OWNER' || role === 'ROP'
+  const canEditDeals = role === 'OWNER' || role === 'ROP' || role === 'LAWYER'
+  const canDeleteDeals = role === 'OWNER' || role === 'ROP'
   const [deals, setDeals] = useState<Deal[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
+  const initialLoaded = useRef(false)
 
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])
@@ -120,21 +127,29 @@ export function DealsRegistry() {
     commissionsManual: false,
     agentRateApplied: '',
     ropRateApplied: '',
-    plannedMoneyDate: '' // New field
+    plannedMoneyDate: '',
+    closingAccountId: '',
+    closingCategory: ''
   })
 
   const load = async () => {
-    setLoading(true)
-    const [dealsRes, empRes] = await Promise.all([
+    if (!initialLoaded.current) setLoading(true)
+    const [dealsRes, empRes, accRes] = await Promise.all([
       fetch('/api/deals', { cache: 'no-store' }),
-      fetch('/api/employees', { cache: 'no-store' })
+      fetch('/api/employees', { cache: 'no-store' }),
+      fetch('/api/accounts', { cache: 'no-store' })
     ])
     if (!dealsRes.ok) throw new Error('Failed to load deals')
     if (!empRes.ok) throw new Error('Failed to load employees')
     const [dealsData, empData] = await Promise.all([dealsRes.json(), empRes.json()])
     setDeals(dealsData)
     setEmployees(empData.map((e: any) => ({ id: e.id, name: e.name })))
+    if (accRes.ok) {
+      const accData = await accRes.json()
+      setAccounts((accData.accounts ?? accData).map((a: any) => ({ id: a.id, name: a.name })))
+    }
     setLoading(false)
+    initialLoaded.current = true
   }
 
   useEffect(() => {
@@ -291,7 +306,10 @@ export function DealsRegistry() {
       otherExpense: '0',
       commissionsManual: false,
       agentRateApplied: '',
-      ropRateApplied: ''
+      ropRateApplied: '',
+      plannedMoneyDate: '',
+      closingAccountId: '',
+      closingCategory: ''
     })
   }
 
@@ -324,7 +342,9 @@ export function DealsRegistry() {
       otherExpense: parseFloat(formData.otherExpense) || 0,
       commissionsManual: formData.commissionsManual,
       agentRateApplied: formData.agentRateApplied.trim() === '' ? undefined : parseFloat(formData.agentRateApplied),
-      ropRateApplied: formData.ropRateApplied.trim() === '' ? undefined : parseFloat(formData.ropRateApplied)
+      ropRateApplied: formData.ropRateApplied.trim() === '' ? undefined : parseFloat(formData.ropRateApplied),
+      closingAccountId: formData.status === 'CLOSED' && formData.closingAccountId ? formData.closingAccountId : undefined,
+      closingCategory: formData.status === 'CLOSED' && formData.closingCategory ? formData.closingCategory : undefined
     }
 
     const res = await fetch('/api/deals', {
@@ -369,7 +389,9 @@ export function DealsRegistry() {
         ropRateApplied: editingDeal.ropRateApplied,
         ropCommission: editingDeal.ropCommission,
         agentCommission: editingDeal.agentCommission,
-        netProfit: editingDeal.netProfit
+        netProfit: editingDeal.netProfit,
+        closingAccountId: editingDeal.status === 'CLOSED' && editingDeal.closingAccountId ? editingDeal.closingAccountId : undefined,
+        closingCategory: editingDeal.status === 'CLOSED' && editingDeal.closingCategory ? editingDeal.closingCategory : undefined
       })
     })
     if (!res.ok) throw new Error('Failed to update deal')
@@ -380,7 +402,16 @@ export function DealsRegistry() {
   const handleDeleteDeal = async (dealId: string) => {
     if (!confirm('Вы уверены, что хотите удалить эту сделку?')) return
     const res = await fetch(`/api/deals/${dealId}`, { method: 'DELETE' })
-    if (!res.ok) throw new Error('Failed to delete deal')
+    if (!res.ok) {
+      let message = 'Не удалось удалить сделку'
+      try {
+        const data = await res.json()
+        if (data?.error) message = String(data.error)
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(message)
+    }
     await load()
   }
 
@@ -407,7 +438,7 @@ export function DealsRegistry() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Обновить
           </Button>
-          {canManageDeals && (
+          {canEditDeals && (
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button>
@@ -492,6 +523,38 @@ export function DealsRegistry() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {formData.status === 'CLOSED' && (
+                    <>
+                      <div>
+                        <Label>Счёт поступления</Label>
+                        <select
+                          className="w-full border rounded-md p-2 text-sm"
+                          value={formData.closingAccountId}
+                          onChange={e => setFormData(p => ({ ...p, closingAccountId: e.target.value }))}
+                        >
+                          <option value="">Не создавать приход</option>
+                          {accounts.map(a => (
+                            <option key={a.id} value={a.id}>{a.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {formData.closingAccountId && (
+                        <div>
+                          <Label>Категория прихода</Label>
+                          <select
+                            className="w-full border rounded-md p-2 text-sm"
+                            value={formData.closingCategory}
+                            onChange={e => setFormData(p => ({ ...p, closingCategory: e.target.value }))}
+                          >
+                            <option value="">Выберите категорию</option>
+                            {DEFAULT_INCOME_CATEGORIES.map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </>
+                  )}
                   <div>
                     <Label htmlFor="depositDate">Дата брони</Label>
                     <Input
@@ -887,14 +950,16 @@ export function DealsRegistry() {
                               <Button variant="ghost" size="sm" onClick={() => (setSelectedDeal(deal), setIsViewDialogOpen(true))}>
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              {canManageDeals && (
+                              {canEditDeals && (
                                 <>
                                   <Button variant="ghost" size="sm" onClick={() => setEditingDeal(deal)}>
                                     <Edit className="h-4 w-4" />
                                   </Button>
-                                  <Button variant="ghost" size="sm" onClick={() => handleDeleteDeal(deal.id).catch(err => alert(err.message))}>
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
+                                  {canDeleteDeals && (
+                                    <Button variant="ghost" size="sm" onClick={() => handleDeleteDeal(deal.id).catch(err => alert(err.message))}>
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -1083,7 +1148,7 @@ export function DealsRegistry() {
         </DialogContent>
       </Dialog>
 
-      {canManageDeals && (
+      {canEditDeals && (
         <Dialog open={!!editingDeal} onOpenChange={() => setEditingDeal(null)}>
           <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
@@ -1169,6 +1234,38 @@ export function DealsRegistry() {
                     </SelectContent>
                   </Select>
                 </div>
+                {editingDeal.status === 'CLOSED' && (
+                  <>
+                    <div>
+                      <Label>Счёт поступления</Label>
+                      <select
+                        className="w-full border rounded-md p-2 text-sm"
+                        value={editingDeal.closingAccountId ?? ''}
+                        onChange={e => setEditingDeal(d => (d ? { ...d, closingAccountId: e.target.value || null } : d))}
+                      >
+                        <option value="">Не создавать приход</option>
+                        {accounts.map(a => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {editingDeal.closingAccountId && (
+                      <div>
+                        <Label>Категория прихода</Label>
+                        <select
+                          className="w-full border rounded-md p-2 text-sm"
+                          value={editingDeal.closingCategory ?? ''}
+                          onChange={e => setEditingDeal(d => (d ? { ...d, closingCategory: e.target.value || null } : d))}
+                        >
+                          <option value="">Выберите категорию</option>
+                          {DEFAULT_INCOME_CATEGORIES.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                )}
                 <div>
                   <Label>Дата брони</Label>
                   <Input

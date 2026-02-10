@@ -107,7 +107,7 @@ export async function PUT(
 ) {
   try {
     const session = await requireSession()
-    if (session.role !== 'OWNER' && session.role !== 'ROP') {
+    if (session.role !== 'OWNER' && session.role !== 'ROP' && session.role !== 'LAWYER') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -152,6 +152,7 @@ export async function PUT(
           ? null
           : undefined, // New field
       contractType: data.contractType ?? undefined,
+      developer: data.developer !== undefined ? (data.developer || null) : undefined,
       legalServices: legalServicesInput ?? undefined,
       notes: data.notes === null ? null : data.notes ?? undefined,
       taxRate: data.taxRate ?? undefined,
@@ -260,6 +261,36 @@ export async function PUT(
       include: { agent: true, rop: true }
     })
 
+    // Авто-поступление: при закрытии сделки — создаём приход на выбранный счёт
+    const closingAccountId = data.closingAccountId as string | undefined
+    const closingCategory = (data.closingCategory as string | undefined) || 'Комиссия от застройщика'
+    const statusBecameClosed =
+      deal.status === 'CLOSED' && existing.status !== 'CLOSED'
+    if (statusBecameClosed && closingAccountId && deal.commission > 0) {
+      const targetAccount = await db.account.findUnique({
+        where: { id: closingAccountId }
+      })
+      if (targetAccount) {
+        await db.cashFlow.create({
+          data: {
+            type: 'INCOME',
+            amount: deal.commission,
+            category: closingCategory,
+            status: 'PAID',
+            plannedDate: new Date(),
+            actualDate: new Date(),
+            accountId: targetAccount.id,
+            description: `Авто: комиссия по сделке ${deal.client} — ${deal.object}`
+          }
+        })
+        // Обновляем баланс счёта
+        await db.account.update({
+          where: { id: targetAccount.id },
+          data: { balance: { increment: deal.commission } }
+        })
+      }
+    }
+
     await ensureDealPayrollAccruals(deal.id)
     return NextResponse.json({ ...deal, ...normalizeDealExpenses(deal as any) })
   } catch (error) {
@@ -288,7 +319,26 @@ export async function DELETE(
     const existing = await db.deal.findUnique({ where: { id } })
     if (!existing) return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
 
-    await db.deal.delete({ where: { id } })
+    const payrollDb = db as any
+    const hasPayrollModels = Boolean(payrollDb.payrollPayment?.count && payrollDb.payrollAccrual?.deleteMany)
+    if (hasPayrollModels) {
+      const payrollPayments = await payrollDb.payrollPayment.count({
+        where: { accrual: { dealId: id } }
+      })
+      if (payrollPayments > 0) {
+        return NextResponse.json(
+          { error: 'Нельзя удалить сделку: есть выплаты по зарплате. Сначала удалите выплаты или отмените сделку.' },
+          { status: 409 }
+        )
+      }
+
+      await db.$transaction([
+        payrollDb.payrollAccrual.deleteMany({ where: { dealId: id } }),
+        db.deal.delete({ where: { id } })
+      ])
+    } else {
+      await db.deal.delete({ where: { id } })
+    }
     return NextResponse.json({ success: true })
   } catch (error) {
     if ((error as Error).message === 'UNAUTHORIZED') {

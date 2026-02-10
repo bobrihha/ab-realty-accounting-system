@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await requireSession()
-    if (session.role !== 'OWNER' && session.role !== 'ROP') {
+    if (session.role !== 'OWNER' && session.role !== 'ROP' && session.role !== 'LAWYER') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     const data = await request.json()
@@ -164,6 +164,7 @@ export async function POST(request: NextRequest) {
             ? null
             : undefined,
         contractType: data.contractType ?? 'EXCLUSIVE',
+        developer: data.developer ? String(data.developer) : null,
         legalServices,
         legalServicesAmount,
         notes: data.notes ? String(data.notes) : null,

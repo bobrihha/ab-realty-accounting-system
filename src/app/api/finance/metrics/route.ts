@@ -23,6 +23,12 @@ export async function GET(request: NextRequest) {
     const from = new Date(year, 0, 1)
     const to = new Date(year, 11, 31, 23, 59, 59, 999)
 
+    const excludedOwners = await db.employee.findMany({
+      where: { role: 'OWNER' },
+      select: { id: true }
+    })
+    const excludedOwnerIds = new Set(excludedOwners.map(o => o.id))
+
     const dealsByBooking = await db.deal.findMany({
       where: { depositDate: { gte: from, lte: to }, NOT: { status: 'CANCELLED' } },
       select: {
@@ -33,9 +39,6 @@ export async function GET(request: NextRequest) {
         commission: true
       }
     })
-
-    // Имя агента (директора), сделки которого не учитываются в расчёте % агента и РОПа
-    const EXCLUDED_AGENT_NAME = 'Берников А.В.'
 
     const dealsClosed = await db.deal.findMany({
       where: { dealDate: { gte: from, lte: to }, NOT: { status: 'CANCELLED' } },
@@ -51,8 +54,7 @@ export async function GET(request: NextRequest) {
         ropCommission: true,
         referralExpense: true,
         agentRateApplied: true,
-        ropRateApplied: true,
-        agent: { select: { name: true } }
+        ropRateApplied: true
       }
     })
 
@@ -174,6 +176,7 @@ export async function GET(request: NextRequest) {
     }
 
     for (const d of dealsByBooking) {
+      if (excludedOwnerIds.has(d.agentId)) continue
       const mk = mkFor(d.depositDate)
       const m = ensureMonth(mk)
       if (!m) continue
@@ -190,6 +193,7 @@ export async function GET(request: NextRequest) {
     }
 
     for (const d of dealsClosed) {
+      if (excludedOwnerIds.has(d.agentId)) continue
       if (!d.dealDate) continue
       const mk = mkFor(d.dealDate)
       const m = ensureMonth(mk)
@@ -199,16 +203,12 @@ export async function GET(request: NextRequest) {
       m.soldPrice += d.price
       m.netProfit += d.netProfit ?? 0
 
-      // Исключаем сделки директора (Берников А.В.) из расчёта % агента и РОПа
-      const isExcludedAgent = d.agent?.name === EXCLUDED_AGENT_NAME
-      if (!isExcludedAgent) {
-        m.agentCommission += d.agentCommission ?? 0
-        m.ropCommission += d.ropCommission ?? 0
-        // Для расчёта среднего % ставки
-        m._dealCount += 1
-        m._agentRateSum += d.agentRateApplied ?? 0
-        m._ropRateSum += d.ropRateApplied ?? 0
-      }
+      m.agentCommission += d.agentCommission ?? 0
+      m.ropCommission += d.ropCommission ?? 0
+      // Для расчёта среднего % ставки
+      m._dealCount += 1
+      m._agentRateSum += d.agentRateApplied ?? 0
+      m._ropRateSum += d.ropRateApplied ?? 0
     }
 
     const byAgent = new Map<
@@ -264,6 +264,7 @@ export async function GET(request: NextRequest) {
     }
 
     for (const d of dealsByBooking) {
+      if (excludedOwnerIds.has(d.agentId)) continue
       const a = ensureEmp(byAgent, d.agentId, 'AGENT')
       a.bookingRevenue += d.commission
       if (d.ropId) {
@@ -283,6 +284,7 @@ export async function GET(request: NextRequest) {
     }
 
     for (const d of dealsClosed) {
+      if (excludedOwnerIds.has(d.agentId)) continue
       const a = ensureEmp(byAgent, d.agentId, 'AGENT')
       a.dealRevenue += d.commission
       a.soldPrice += d.price

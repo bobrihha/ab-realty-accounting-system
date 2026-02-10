@@ -1,6 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  DEFAULT_EXPENSE_CATEGORIES,
+  DEFAULT_INCOME_CATEGORIES,
+  type ExpenseBlockConfig
+} from '@/lib/cashflow-defaults'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -70,34 +75,7 @@ type TreasuryDetailItem = {
   accountId?: string | null
 }
 
-// Фиксированный список категорий расходов
-const EXPENSE_CATEGORIES = [
-  'Аренда',
-  'Роялти',
-  'ЗП HR',
-  'ЗП офис-менеджер',
-  'ЗП другое',
-  'ЗП другое',
-  'ЗП директора',
-  'Налоги', // 3.6
-  'Авито',
-  'Циан',
-  'Яндекс',
-  'ДомКлик',
-  'Маркетинг другой',
-  'Офис расходы',
-  'Другое'
-]
 
-// Категории приходов (откуда приход)
-const INCOME_CATEGORIES = [
-  'Комиссия от застройщика',
-  'Комиссия от собственника',
-  'Комиссия от покупателя', // 3.4
-  'Юр.услуги',
-  'Ипотека',
-  'Другое'
-]
 
 export function Treasury() {
   const currentYear = new Date().getFullYear()
@@ -106,7 +84,10 @@ export function Treasury() {
   const [cashFlow, setCashFlow] = useState<CashFlowItem[]>([])
   const [forecast, setForecast] = useState<MonthlyForecast[]>([])
   const [treasuryKPI, setTreasuryKPI] = useState<TreasuryKPI | null>(null)
+  const [expenseCategories, setExpenseCategories] = useState<string[]>(DEFAULT_EXPENSE_CATEGORIES)
+  const [incomeCategories, setIncomeCategories] = useState<string[]>(DEFAULT_INCOME_CATEGORIES)
   const [loading, setLoading] = useState(true)
+  const initialLoaded = useRef(false)
   const [error, setError] = useState<string | null>(null)
 
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false)
@@ -189,7 +170,7 @@ export function Treasury() {
   })
 
   const load = async (yearOverride?: string) => {
-    setLoading(true)
+    if (!initialLoaded.current) setLoading(true)
     setError(null)
     const yearToUse = yearOverride ?? selectedYear
     const yearParam = yearToUse === 'current' ? '' : `&year=${yearToUse}`
@@ -228,7 +209,22 @@ export function Treasury() {
       setTreasuryKPI(kpiData)
     }
 
+    // Load settings (categories)
+    try {
+      const settingsRes = await fetch('/api/settings', { cache: 'no-store' })
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json()
+        if (Array.isArray(settingsData.cashflowExpenseCategories) && settingsData.cashflowExpenseCategories.length > 0) {
+          setExpenseCategories(settingsData.cashflowExpenseCategories)
+        }
+        if (Array.isArray(settingsData.cashflowIncomeCategories) && settingsData.cashflowIncomeCategories.length > 0) {
+          setIncomeCategories(settingsData.cashflowIncomeCategories)
+        }
+      }
+    } catch { /* ignore — will use defaults */ }
+
     setLoading(false)
+    initialLoaded.current = true
   }
 
   useEffect(() => {
@@ -319,7 +315,7 @@ export function Treasury() {
     let grandTotal = 0
 
     expenses.forEach(e => {
-      const cat = EXPENSE_CATEGORIES.includes(e.category) ? e.category : 'Другое'
+      const cat = expenseCategories.includes(e.category) ? e.category : 'Другое'
       byCategory[cat] = (byCategory[cat] || 0) + e.amount
       grandTotal += e.amount
     })
@@ -725,7 +721,7 @@ export function Treasury() {
                       onChange={e => setNewCashFlow(p => ({ ...p, category: e.target.value }))}
                     >
                       <option value="">Выберите категорию</option>
-                      {(newCashFlow.type === 'INCOME' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(cat => (
+                      {(newCashFlow.type === 'INCOME' ? incomeCategories : expenseCategories).map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
                     </select>
@@ -814,83 +810,7 @@ export function Treasury() {
         {/* Treasury KPI Cards */}
         {treasuryKPI && (
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {/* 1. Ожидаю на оплате */}
-            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-purple-800 flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  На оплате
-                </CardTitle>
-                <CardDescription className="text-purple-600">Статус: На оплате</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-purple-900">
-                  {formatCurrency(treasuryKPI.expectedWaitingPayment.value)}
-                </div>
-                <p className="text-xs text-purple-600 mt-1">
-                  {treasuryKPI.expectedWaitingPayment.count} сделок
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* 2. Ожидаю на регистрации */}
-            <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-indigo-800 flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  На регистрации
-                </CardTitle>
-                <CardDescription className="text-indigo-600">Статус: На регистрации</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-indigo-900">
-                  {formatCurrency(treasuryKPI.expectedRegistration.value)}
-                </div>
-                <p className="text-xs text-indigo-600 mt-1">
-                  {treasuryKPI.expectedRegistration.count} сделок
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* 3. Ждём счёт */}
-            <Card className="bg-gradient-to-br from-cyan-50 to-cyan-100 border-cyan-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-cyan-800 flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" />
-                  Ждём счёт
-                </CardTitle>
-                <CardDescription className="text-cyan-600">Статус: Ждём счёт</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-cyan-900">
-                  {formatCurrency(treasuryKPI.expectedWaitingInvoice.value)}
-                </div>
-                <p className="text-xs text-cyan-600 mt-1">
-                  {treasuryKPI.expectedWaitingInvoice.count} сделок
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* 4. Задатки */}
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-orange-800 flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  В задатке
-                </CardTitle>
-                <CardDescription className="text-orange-600">Потенциал (не в прогнозе)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-orange-900">
-                  {formatCurrency(treasuryKPI.expectedDeposits.value)}
-                </div>
-                <p className="text-xs text-orange-600 mt-1">
-                  {treasuryKPI.expectedDeposits.count} сделок
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* 5. Ожидаю итого */}
+            {/* 1. Ожидаю итого */}
             <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-green-800 flex items-center gap-2">
@@ -913,6 +833,82 @@ export function Treasury() {
                     treasuryKPI.expectedRegistration.count +
                     treasuryKPI.expectedWaitingInvoice.count +
                     treasuryKPI.expectedDeposits.count} сделок
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* 2. Ожидаю на оплате */}
+            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-purple-800 flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  На оплате
+                </CardTitle>
+                <CardDescription className="text-purple-600">Статус: На оплате</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-purple-900">
+                  {formatCurrency(treasuryKPI.expectedWaitingPayment.value)}
+                </div>
+                <p className="text-xs text-purple-600 mt-1">
+                  {treasuryKPI.expectedWaitingPayment.count} сделок
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* 3. Ожидаю на регистрации */}
+            <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-indigo-800 flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  На регистрации
+                </CardTitle>
+                <CardDescription className="text-indigo-600">Статус: На регистрации</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-indigo-900">
+                  {formatCurrency(treasuryKPI.expectedRegistration.value)}
+                </div>
+                <p className="text-xs text-indigo-600 mt-1">
+                  {treasuryKPI.expectedRegistration.count} сделок
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* 4. Ждём счёт */}
+            <Card className="bg-gradient-to-br from-cyan-50 to-cyan-100 border-cyan-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-cyan-800 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Ждём счёт
+                </CardTitle>
+                <CardDescription className="text-cyan-600">Статус: Ждём счёт</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-cyan-900">
+                  {formatCurrency(treasuryKPI.expectedWaitingInvoice.value)}
+                </div>
+                <p className="text-xs text-cyan-600 mt-1">
+                  {treasuryKPI.expectedWaitingInvoice.count} сделок
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* 5. Задатки */}
+            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-orange-800 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  В задатке
+                </CardTitle>
+                <CardDescription className="text-orange-600">Потенциал (не в прогнозе)</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-orange-900">
+                  {formatCurrency(treasuryKPI.expectedDeposits.value)}
+                </div>
+                <p className="text-xs text-orange-600 mt-1">
+                  {treasuryKPI.expectedDeposits.count} сделок
                 </p>
               </CardContent>
             </Card>
@@ -1413,12 +1409,12 @@ export function Treasury() {
                 >
                   <option value="all">Все категории</option>
                   <optgroup label="Приходы">
-                    {INCOME_CATEGORIES.map(cat => (
+                    {incomeCategories.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </optgroup>
                   <optgroup label="Расходы">
-                    {EXPENSE_CATEGORIES.map(cat => (
+                    {expenseCategories.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </optgroup>

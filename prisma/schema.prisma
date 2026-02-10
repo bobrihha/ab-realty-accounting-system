@@ -8,6 +8,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Настройки приложения (singleton)
+model AppSettings {
+  id                        String   @id @default("default")
+  cashflowIncomeCategories  Json?    // string[]
+  cashflowExpenseCategories Json?    // string[]
+  cashflowExpenseBlocks     Json?    // { name: string, categories: string[] }[]
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@map("app_settings")
+}
+
 // Сотрудники компании
 model Employee {
   id            String   @id @default(cuid())

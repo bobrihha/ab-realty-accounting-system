@@ -167,8 +167,14 @@ async function computeForecast(months: number, year: number | null = null) {
       isRecurring: true,
       category: { notIn: EXCLUDED_PAYROLL_CATEGORIES }
     },
-    select: { id: true, category: true, amount: true }
+    select: { id: true, category: true, description: true, amount: true }
   })
+
+  const normalizeDesc = (description: string | null) => (description ?? '').trim()
+  const recurringKey = (category: string, description: string | null, amount: number) =>
+    `${category}||${normalizeDesc(description)}||${Number(amount ?? 0).toFixed(2)}`
+  const recurringFallbackKey = (category: string, amount: number) =>
+    `${category}||${Number(amount ?? 0).toFixed(2)}`
 
   // Определяем стартовый месяц
   const startYear = year ?? now.getFullYear()
@@ -211,16 +217,20 @@ async function computeForecast(months: number, year: number | null = null) {
         status: 'PAID',
         plannedDate: { gte: from, lte: to }
       },
-      select: { category: true }
+      select: { category: true, description: true, amount: true }
     })
-    const paidCategories = new Set(paidExpensesForThisMonth.map(e => e.category))
+    const paidRecurringKeys = new Set(paidExpensesForThisMonth.map(e => recurringKey(e.category, e.description ?? null, e.amount)))
+    const paidRecurringFallbackKeys = new Set(paidExpensesForThisMonth.map(e => recurringFallbackKey(e.category, e.amount)))
 
     // Считаем сумму повторяющихся расходов, исключая те категории, которые уже оплачены
     let recurringExpenseSum = 0
     for (const re of recurringExpensesList) {
-      if (!paidCategories.has(re.category)) {
-        recurringExpenseSum += re.amount
-      }
+      const key = recurringKey(re.category, re.description ?? null, re.amount)
+      const desc = normalizeDesc(re.description ?? null)
+      const isPaid = desc
+        ? paidRecurringKeys.has(key)
+        : paidRecurringKeys.has(key) || paidRecurringFallbackKeys.has(recurringFallbackKey(re.category, re.amount))
+      if (!isPaid) recurringExpenseSum += re.amount
     }
 
     // Для месяца: одноразовые плановые + повторяющиеся (не оплаченные)

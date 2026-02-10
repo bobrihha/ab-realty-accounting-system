@@ -13,6 +13,7 @@ import { Compensation } from '@/components/compensation/compensation'
 import { Payroll } from '@/components/payroll/payroll'
 import { LegalServicesRegistry } from '@/components/legal-services/legal-services'
 import { CredentialsRegistry } from '@/components/credentials/credentials'
+import { AppSettingsPanel } from '@/components/settings/app-settings'
 import { signOut } from 'next-auth/react'
 import { useSession } from 'next-auth/react'
 import { Badge } from '@/components/ui/badge'
@@ -445,6 +446,9 @@ export default function Dashboard() {
             {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
               <TabsTrigger value="team">Команда</TabsTrigger>
             )}
+            {role === 'OWNER' && (
+              <TabsTrigger value="settings">Настройки</TabsTrigger>
+            )}
           </TabsList>
 
           {/* Deals Tab */}
@@ -495,6 +499,12 @@ export default function Dashboard() {
           {(role === 'OWNER' || role === 'ACCOUNTANT' || role === 'ROP') && (
             <TabsContent value="team">
               <Team />
+            </TabsContent>
+          )}
+
+          {role === 'OWNER' && (
+            <TabsContent value="settings">
+              <AppSettingsPanel />
             </TabsContent>
           )}
         </Tabs>
