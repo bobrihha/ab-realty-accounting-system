@@ -291,6 +291,29 @@ export async function PUT(
       }
     }
 
+    // Откат авто-поступления: если статус был CLOSED и стал другим — удаляем авто-приход
+    const statusLeftClosed =
+      existing.status === 'CLOSED' && deal.status !== 'CLOSED'
+    if (statusLeftClosed) {
+      const autoPrefix = `Авто: комиссия по сделке ${deal.client}`
+      const autoCashFlows = await db.cashFlow.findMany({
+        where: {
+          description: { startsWith: autoPrefix },
+          type: 'INCOME'
+        }
+      })
+      for (const cf of autoCashFlows) {
+        // Откатываем баланс счёта, если запись была оплачена
+        if (cf.status === 'PAID' && cf.accountId) {
+          await db.account.update({
+            where: { id: cf.accountId },
+            data: { balance: { decrement: cf.amount } }
+          })
+        }
+        await db.cashFlow.delete({ where: { id: cf.id } })
+      }
+    }
+
     await ensureDealPayrollAccruals(deal.id)
     return NextResponse.json({ ...deal, ...normalizeDealExpenses(deal as any) })
   } catch (error) {
