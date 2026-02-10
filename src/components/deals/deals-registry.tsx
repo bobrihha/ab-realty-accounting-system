@@ -137,7 +137,7 @@ export function DealsRegistry() {
     const [dealsRes, empRes, accRes] = await Promise.all([
       fetch('/api/deals', { cache: 'no-store' }),
       fetch('/api/employees', { cache: 'no-store' }),
-      fetch('/api/accounts', { cache: 'no-store' })
+      fetch('/api/treasury?type=accounts', { cache: 'no-store' })
     ])
     if (!dealsRes.ok) throw new Error('Failed to load deals')
     if (!empRes.ok) throw new Error('Failed to load employees')
