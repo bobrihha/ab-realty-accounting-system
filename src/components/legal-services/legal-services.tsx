@@ -62,6 +62,7 @@ export function LegalServicesRegistry() {
     const { data: session } = useSession()
     const role = ((session as any)?.role as string | undefined) ?? 'AGENT'
     const isOwner = role === 'OWNER'
+    const canEdit = isOwner || role === 'LAWYER'
 
     const currentYear = new Date().getFullYear()
     const [selectedYear, setSelectedYear] = useState(String(currentYear))
@@ -255,7 +256,7 @@ export function LegalServicesRegistry() {
                         <RefreshCw className="h-4 w-4 mr-2" />
                         Обновить
                     </Button>
-                    {isOwner && (
+                    {canEdit && (
                         <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
                             setIsCreateDialogOpen(open)
                             if (!open) resetForm()
@@ -479,7 +480,7 @@ export function LegalServicesRegistry() {
                                             <TableCell className="max-w-xs truncate">{service.description || '-'}</TableCell>
                                             <TableCell>
                                                 <div className="flex space-x-2">
-                                                    {isOwner && (
+                                                    {canEdit && (
                                                         <>
                                                             <Button variant="ghost" size="sm" onClick={() => openEdit(service)}>
                                                                 <Edit className="h-4 w-4" />
@@ -505,7 +506,7 @@ export function LegalServicesRegistry() {
             </Card>
 
             {/* Диалог редактирования */}
-            {isOwner && (
+            {canEdit && (
                 <Dialog open={!!editingService} onOpenChange={() => setEditingService(null)}>
                     <DialogContent>
                         <DialogHeader>

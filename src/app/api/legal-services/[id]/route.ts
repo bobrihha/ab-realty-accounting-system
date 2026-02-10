@@ -8,7 +8,7 @@ export async function PUT(
 ) {
     try {
         const session = await requireSession()
-        if (session.role !== 'OWNER') {
+        if (session.role !== 'OWNER' && session.role !== 'LAWYER') {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
 
@@ -50,7 +50,7 @@ export async function DELETE(
 ) {
     try {
         const session = await requireSession()
-        if (session.role !== 'OWNER') {
+        if (session.role !== 'OWNER' && session.role !== 'LAWYER') {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
 
