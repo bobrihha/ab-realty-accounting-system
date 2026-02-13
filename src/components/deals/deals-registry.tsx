@@ -88,6 +88,7 @@ export function DealsRegistry() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [agentFilter, setAgentFilter] = useState<string>('all')
+  const [ropFilter, setRopFilter] = useState<string>('all')
   const [legalServicesFilter, setLegalServicesFilter] = useState<string>('all')
   const [contractTypeFilter, setContractTypeFilter] = useState<string>('all')
   const [developerFilter, setDeveloperFilter] = useState<string>('all')
@@ -196,6 +197,7 @@ export function DealsRegistry() {
         deal.agent.name.toLowerCase().includes(s)
       const matchesStatus = statusFilter.length === 0 || statusFilter.includes(deal.status)
       const matchesAgent = agentFilter === 'all' || deal.agent.id === agentFilter
+      const matchesRop = ropFilter === 'all' || (deal.rop && deal.rop.id === ropFilter) || (ropFilter === '__none__' && !deal.rop)
       const matchesLegalServices =
         legalServicesFilter === 'all' ||
         (legalServicesFilter === 'yes' && deal.legalServices) ||
@@ -233,9 +235,9 @@ export function DealsRegistry() {
         }
       }
 
-      return matchesSearch && matchesStatus && matchesAgent && matchesLegalServices && matchesContractType && matchesDeveloper && matchesPeriod && matchesDepositPeriod
+      return matchesSearch && matchesStatus && matchesAgent && matchesRop && matchesLegalServices && matchesContractType && matchesDeveloper && matchesPeriod && matchesDepositPeriod
     })
-  }, [agentFilter, contractTypeFilter, developerFilter, deals, legalServicesFilter, searchTerm, statusFilter, yearFilter, monthFilter, depositYearFilter, depositMonthFilter])
+  }, [agentFilter, ropFilter, contractTypeFilter, developerFilter, deals, legalServicesFilter, searchTerm, statusFilter, yearFilter, monthFilter, depositYearFilter, depositMonthFilter])
 
   // Статистика по агентам
   const agentStats = useMemo(() => {
@@ -806,6 +808,24 @@ export function DealsRegistry() {
                   {employees.map(e => (
                     <SelectItem key={e.id} value={e.id}>
                       {e.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {role !== 'AGENT' && (
+              <Select value={ropFilter} onValueChange={setRopFilter}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="РОП" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все РОПы</SelectItem>
+                  <SelectItem value="__none__">Без РОПа</SelectItem>
+                  {Array.from(
+                    new Map(deals.filter(d => d.rop).map(d => [d.rop!.id, d.rop!])).values()
+                  ).sort((a, b) => a.name.localeCompare(b.name)).map(r => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
