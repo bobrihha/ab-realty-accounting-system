@@ -287,20 +287,29 @@ async function computeForecast(months: number, year: number | null = null) {
     let dealsFact = 0
 
     if (isHistoricalView) {
-      // Исторический: Факт = закрытые сделки
-      const closedDeals = await db.deal.aggregate({
-        where: { dealDate: { gte: from, lte: to }, status: 'CLOSED' },
+      // Исторический: Факт = закрытые сделки по дате поступления денег (plannedMoneyDate)
+      // Фолбэк на dealDate если plannedMoneyDate не заполнено
+      const closedDealsWithMoneyDate = await db.deal.aggregate({
+        where: { status: 'CLOSED', plannedMoneyDate: { gte: from, lte: to } },
         _sum: { netProfit: true }
       })
-      dealsFact = closedDeals._sum.netProfit ?? 0
+      const closedDealsNoMoneyDate = await db.deal.aggregate({
+        where: { status: 'CLOSED', plannedMoneyDate: null, dealDate: { gte: from, lte: to } },
+        _sum: { netProfit: true }
+      })
+      dealsFact = (closedDealsWithMoneyDate._sum.netProfit ?? 0) + (closedDealsNoMoneyDate._sum.netProfit ?? 0)
       // Ожидаемое в прошлом = 0 (уже стало фактом или перенеслось)
     } else {
-      // Прогноз: Факт = закрытые сделки в этом месяце (если текущий месяц)
-      const closedDeals = await db.deal.aggregate({
-        where: { dealDate: { gte: from, lte: to }, status: 'CLOSED' },
+      // Прогноз: Факт = закрытые сделки по дате поступления денег (plannedMoneyDate)
+      const closedDealsWithMoneyDate = await db.deal.aggregate({
+        where: { status: 'CLOSED', plannedMoneyDate: { gte: from, lte: to } },
         _sum: { netProfit: true }
       })
-      dealsFact = closedDeals._sum.netProfit ?? 0
+      const closedDealsNoMoneyDate = await db.deal.aggregate({
+        where: { status: 'CLOSED', plannedMoneyDate: null, dealDate: { gte: from, lte: to } },
+        _sum: { netProfit: true }
+      })
+      dealsFact = (closedDealsWithMoneyDate._sum.netProfit ?? 0) + (closedDealsNoMoneyDate._sum.netProfit ?? 0)
 
       // Ожидаемое = сумма netProfit активных сделок, которые падают на этот месяц
       // Логика даты: plannedMoneyDate -> plannedCloseDate -> dealDate -> Creation Date (fallback to now)

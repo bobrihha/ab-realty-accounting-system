@@ -153,13 +153,17 @@ export async function GET(request: NextRequest) {
                 })
 
                 // 2. Closed Deals (Fact)
-                // Logic: dealDate is within this month AND status is CLOSED
+                // Логика: фильтрация по дате поступления денег (plannedMoneyDate)
+                // Фолбэк на dealDate если plannedMoneyDate не заполнено
                 const closedDeals = await db.deal.findMany({
                     where: {
                         status: 'CLOSED',
-                        dealDate: { gte: from, lte: to }
+                        OR: [
+                            { plannedMoneyDate: { gte: from, lte: to } },
+                            { plannedMoneyDate: null, dealDate: { gte: from, lte: to } }
+                        ]
                     },
-                    select: { id: true, netProfit: true, client: true, dealDate: true },
+                    select: { id: true, netProfit: true, client: true, dealDate: true, plannedMoneyDate: true },
                     orderBy: { dealDate: 'asc' }
                 })
 
@@ -180,7 +184,7 @@ export async function GET(request: NextRequest) {
                         category: 'Сделка',
                         description: d.client,
                         amount: d.netProfit,
-                        date: d.dealDate,
+                        date: d.plannedMoneyDate ?? d.dealDate,
                         source: 'deal',
                         status: 'CLOSED'
                     }))
